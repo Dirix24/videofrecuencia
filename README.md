@@ -4,10 +4,6 @@ Aplicación de escritorio que analiza, **de verdad**, la frecuencia temporal
 de una señal de vídeo mediante FFT (transformada rápida de Fourier) sobre
 el brillo medio de una región de la imagen a lo largo del tiempo.
 
-> Esta versión sustituye a la anterior, que solo simulaba un "receptor/
-> transmisor de radiofrecuencia" con un slider decorativo (los MHz no
-> afectaban a nada real). Ahora la app hace análisis de señal genuino sobre
-> vídeo, que es lo que su nombre sugiere y lo que una webcam puede medir.
 
 ## ¿Qué hace?
 
