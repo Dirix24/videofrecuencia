@@ -1,0 +1,1 @@
+# VideoFrecuencia 📡📺\n\nAplicación de escritorio interactiva para análisis y simulación de VideoFrecuencia.\n
