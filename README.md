@@ -16,7 +16,7 @@ VideoFrecuencia es una aplicación de escritorio en Python que mide **variacione
 | Detección de señal | Evita mostrar frecuencias cuando la imagen es prácticamente plana, la ventana es demasiado corta o no destaca un pico claro |
 | Diagnóstico | Indica FPS estimados, límite de Nyquist y contraste del pico |
 | Señal sintética | Genera un parpadeo configurable para verificar el analizador |
-| CSV | Exporta el histórico de frecuencias detectadas |
+| CSV | Exporta a un archivo elegido y ofrece autoguardado opcional a una ruta elegida |
 
 ## Inicio rápido
 
@@ -64,9 +64,15 @@ La señal sintética se genera desde el reloj del ordenador y la frecuencia real
 
 La luz ambiente, los movimientos, la exposición automática, el balance de blancos y los FPS variables pueden alterar las mediciones.
 
-### 3. Exporta resultados
+### 3. Guarda resultados donde quieras
 
-Usa **Exportar histórico a CSV**. El archivo contiene `t_segundos` y `frecuencia_dominante_hz` para las mediciones con pico detectado. Al iniciar una nueva captura o señal de prueba se limpia el histórico para no mezclar sesiones.
+- **Guardar manualmente:** pulsa **Exportar histórico a CSV**, elige la carpeta y escribe el nombre que prefieras (por ejemplo, `experimento-01.csv`). Exporta las medidas de la sesión actual. Como en cualquier diálogo de guardado, confirma si decides reemplazar un archivo existente.
+- **Autoguardado opcional:** activa **Autoguardar en CSV** y elige el archivo y la carpeta mediante **Elegir archivo de autoguardado…**. No se guardan datos automáticamente sin elegir antes una ruta.
+- **Cómo funciona:** cada 2 segundos, y al detener o cerrar, se añaden las mediciones pendientes al CSV elegido. Si el archivo ya existe, debe tener la cabecera correcta y las filas nuevas se **añaden**, sin borrar las anteriores. Se puede pausar el autoguardado.
+- **Datos:** `t_segundos` y `frecuencia_dominante_hz`; se registra aproximadamente una medida válida por segundo, no cada repintado de pantalla. Los segundos se reinician al iniciar otra sesión, así que si reutilizas un CSV debes interpretar cada tramo como una sesión diferente.
+- **Errores:** si la carpeta no tiene permisos o el disco falla, la aplicación avisa y detiene el autoguardado. Puedes exportar manualmente las medidas que permanezcan en memoria. No es una base de datos ni garantiza la recuperación ante apagados inesperados.
+
+Al iniciar una nueva captura o señal de prueba se limpia el histórico de memoria, tras intentar guardar lo pendiente.
 
 ## Cómo interpretar las medidas
 
@@ -99,12 +105,17 @@ python -m compileall -q videofrecuencia
 
 Las pruebas verifican detección de señales sintéticas, ausencia de detección en imágenes planas o con ruido débil, validación de datos y situaciones simuladas de desconexión de cámara. **No sustituyen la comprobación con una webcam real y tu sistema operativo.**
 
+## Interfaz y compatibilidad
+
+La interfaz usa Tkinter, Matplotlib y OpenCV con un panel de controles desplazable para pantallas de portátil. Los controles de archivo emplean el selector nativo de Linux, Windows o macOS cuando Tkinter lo proporciona. La apariencia puede variar según el sistema operativo, la escala de pantalla y el tema del escritorio.
+
 ## Nuevas opciones de la interfaz
 
 - **Dispositivo de cámara:** elige índice 0–9 antes de iniciar la captura.
 - **Región central (%):** ajusta qué porcentaje del vídeo se usa para calcular el brillo medio.
 - **Ventana (s):** una ventana larga mejora la resolución de frecuencia, pero tarda más en reaccionar a los cambios.
-- **Reiniciar medición:** limpia el espectro y el histórico de la sesión actual.
+- **Reiniciar medición:** intenta guardar los datos pendientes y limpia el espectro y el histórico de la sesión actual.
+- **Autoguardar en CSV:** opción desactivada por defecto; elige la ubicación y el nombre de archivo, pausa o reanuda cuando quieras.
 - **Prueba sintética:** por defecto se limita el deslizador a 10 Hz; la interfaz avisa si el valor seleccionado supera el margen de muestreo real.
 
 **Límite fundamental:** ninguna detección basada solo en FPS puede demostrar que una señal real no está aliasada; por eso los resultados siguen siendo experimentales.
@@ -126,6 +137,7 @@ Las pruebas verifican detección de señales sintéticas, ausencia de detección
 - `videofrecuencia/capture.py`: adquisición de vídeo en hilo independiente.
 - `videofrecuencia/analysis.py`: ROI, serie temporal, FFT y validación de picos.
 - `videofrecuencia/generator.py`: señal de prueba.
+- `videofrecuencia/storage.py`: exportación y autoguardado CSV portables.
 - `tests/`: pruebas de regresión.
 
 ## Estado del proyecto y límites
