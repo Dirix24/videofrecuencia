@@ -4,13 +4,13 @@
 
 VideoFrecuencia es una aplicación de escritorio en Python que mide **variaciones periódicas del brillo** de una zona de la imagen. Presenta el vídeo, un espectro de frecuencias y una estimación de la frecuencia dominante cuando hay una señal suficientemente clara. También incorpora un generador sintético para comprobar el algoritmo sin cámara.
 
-> **Importante:** no mide radiofrecuencias ni el refresco de una pantalla de forma directa. No es un dispositivo médico ni un instrumento calibrado. Un valor mostrado es una estimación condicionada por el muestreo y la iluminación.
+> **Importante:** el programa estima frecuencias reales de variación de brillo dentro del rango que permite la cámara. Ahora refina los picos entre intervalos de FFT y rechaza capturas con tiempos demasiado irregulares. Sigue sin medir radiofrecuencias ni el refresco de una pantalla de forma directa: para eso se necesitan sensores o métodos de adquisición apropiados. No es un dispositivo médico ni un instrumento calibrado.
 
 ## Qué puedes hacer
 
 | Función | Descripción |
 | --- | --- |
-| Cámara en directo | Captura vídeo con OpenCV sin bloquear la ventana; detección automática de cámaras disponibles y selector desplegable |
+| Cámara en directo | Captura vídeo con OpenCV sin bloquear la ventana; detección automática: una cámara se inicia sola; con varias eliges cuál usar |
 | Región de interés (ROI) | Ajusta el cuadrado central entre el 10 % y el 100 % de la imagen |
 | FFT | Calcula el espectro con ventana configurable de 3 a 12 segundos |
 | Detección de señal | Evita mostrar frecuencias cuando la imagen es prácticamente plana, la ventana es demasiado corta o no destaca un pico claro |
@@ -56,7 +56,7 @@ La señal sintética se genera desde el reloj del ordenador y la frecuencia real
 
 ### 2. Analiza una fuente real
 
-1. Espera a que termine la búsqueda automática de cámaras. Si conectas otra webcam, pulsa **Buscar cámaras disponibles**. Selecciona la cámara que quieras en la lista y pulsa **Iniciar captura (cámara)** y autoriza el acceso si tu sistema lo solicita.
+1. Espera a que termine la búsqueda automática de cámaras. **Si solo hay una cámara, se inicia automáticamente. Si hay dos o más, el programa te pide elegir una en la lista antes de iniciar.** Si conectas otra webcam, detén la captura y pulsa **Buscar cámaras disponibles** y autoriza el acceso si tu sistema lo solicita.
 2. Apunta a una zona con iluminación estable y procura mantener la cámara quieta.
 3. Coloca la fuente que quieres estudiar dentro del **cuadrado central** y ajusta el tamaño de la región (ROI).
 4. Ajusta la ventana de análisis (3–12 s), espera a que se recopilen muestras y observa el gráfico, los FPS y el estado de calidad.
@@ -73,6 +73,13 @@ La luz ambiente, los movimientos, la exposición automática, el balance de blan
 - **Errores:** si la carpeta no tiene permisos o el disco falla, la aplicación avisa y detiene el autoguardado. Puedes exportar manualmente las medidas que permanezcan en memoria. No es una base de datos ni garantiza la recuperación ante apagados inesperados.
 
 Al iniciar una nueva captura o señal de prueba se limpia el histórico de memoria, tras intentar guardar lo pendiente.
+
+## Mejoras de estimación
+
+- **Precisión entre bins:** interpolación parabólica del máximo espectral para reducir el error de cuantización de la FFT cuando la señal es estable.
+- **FPS irregulares:** si la variación relativa de los intervalos entre frames supera el 25 %, se evita publicar una frecuencia dominante y se muestra un aviso.
+- **Resolución:** la interfaz muestra el espaciado de bins de la FFT; no es una garantía de exactitud.
+- **Límites físicos:** la interpolación no recupera señales por encima de Nyquist ni elimina el aliasing. Para medir radiofrecuencias, PWM de alta frecuencia o refresco real de pantalla se necesita hardware adecuado. Las estimaciones ópticas requieren pruebas con cámara y señal de referencia conocidas.
 
 ## Cómo interpretar las medidas
 
@@ -111,7 +118,7 @@ La interfaz usa Tkinter, Matplotlib y OpenCV con un panel de controles desplazab
 
 ## Nuevas opciones de la interfaz
 
-- **Dispositivo de cámara:** el programa busca cámaras accesibles automáticamente y las muestra en una lista. Si hay dos cámaras, puedes escoger entre ellas. Pulsa **Buscar cámaras disponibles** después de conectar o desconectar una. En algunos sistemas la enumeración puede tardar o depender de permisos; no se garantiza el nombre comercial del dispositivo.
+- **Dispositivo de cámara:** el programa busca cámaras accesibles automáticamente y las muestra en una lista. Si hay una sola, inicia la captura sin pedirte nada. Si hay dos o más, espera tu elección; no selecciona una arbitrariamente. Pulsa **Buscar cámaras disponibles** después de conectar o desconectar una. En algunos sistemas la enumeración puede tardar o depender de permisos; no se garantiza el nombre comercial del dispositivo.
 - **Región central (%):** ajusta qué porcentaje del vídeo se usa para calcular el brillo medio.
 - **Ventana (s):** una ventana larga mejora la resolución de frecuencia, pero tarda más en reaccionar a los cambios.
 - **Reiniciar medición:** intenta guardar los datos pendientes y limpia el espectro y el histórico de la sesión actual.

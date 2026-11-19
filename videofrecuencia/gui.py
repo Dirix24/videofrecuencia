@@ -18,6 +18,7 @@ from matplotlib.figure import Figure
 
 from .analysis import FrequencyAnalyzer, roi_mean_intensity
 from .capture import VideoCaptureThread
+from .camera_policy import camera_start_policy
 from .devices import discover_cameras
 from .generator import SyntheticSignalGenerator
 from .storage import append_measurements, export_measurements, initialize_measurements
@@ -57,6 +58,7 @@ class VideoFrequencyApp:
         self._camera_results: queue.Queue = queue.Queue(maxsize=1)
         self._camera_scan_running = False
         self._camera_choices: dict[str, int] = {}
+        self._camera_selection_required = False
 
         self._build_layout()
         self._tick()
@@ -95,6 +97,7 @@ class VideoFrequencyApp:
         self.camera_combo = ttk.Combobox(control, textvariable=self.camera_selection,
                                          state="readonly", width=28)
         self.camera_combo.pack(fill=tk.X, padx=15, pady=(3, 5))
+        self.camera_combo.bind("<<ComboboxSelected>>", self._on_camera_selected)
         self.btn_refresh_cameras = tk.Button(control, text="Buscar cámaras disponibles",
                                               command=self._refresh_cameras, bg="#334155", fg=FG)
         self.btn_refresh_cameras.pack(fill=tk.X, padx=15, pady=(0, 8))
@@ -250,6 +253,12 @@ class VideoFrequencyApp:
             return
         self._detener_generacion()
         if self.capture is None:
+            if self._camera_scan_running:
+                messagebox.showinfo("Cámara", "Espera a que termine la búsqueda de cámaras.")
+                return
+            if self._camera_selection_required:
+                messagebox.showinfo("Cámara", "Hay varias cámaras. Selecciona una en la lista antes de iniciar.")
+                return
             source = self._camera_choices.get(self.camera_selection.get())
             if source is None:
                 messagebox.showinfo("Cámara", "Pulsa Buscar cámaras disponibles y selecciona una.")
@@ -265,6 +274,11 @@ class VideoFrequencyApp:
         else:
             self._detener_captura()
 
+    def _on_camera_selected(self, _event=None) -> None:
+        if self.camera_selection.get() in self._camera_choices:
+            self._camera_selection_required = False
+            self.camera_hint.config(text=f"Seleccionada: {self.camera_selection.get()}. Pulsa Iniciar captura.", fg=ACCENT)
+
     def _refresh_cameras(self) -> None:
         if self._camera_scan_running:
             return
@@ -273,6 +287,7 @@ class VideoFrequencyApp:
             return
         self._camera_scan_running = True
         self.btn_refresh_cameras.config(state=tk.DISABLED)
+        self.btn_capturar.config(state=tk.DISABLED)
         self.camera_hint.config(text="Buscando cámaras conectadas…")
 
         def worker() -> None:
@@ -291,14 +306,41 @@ class VideoFrequencyApp:
             return
         self._camera_scan_running = False
         self.btn_refresh_cameras.config(state=tk.NORMAL)
+        self.btn_capturar.config(state=tk.NORMAL)
         previous = self._camera_choices.get(self.camera_selection.get())
         self._camera_choices = {label: index for index, label in found}
         choices = list(self._camera_choices)
         self.camera_combo.config(values=choices)
-        selected = next((label for label, index in found if index == previous), None)
-        self.camera_selection.set(selected or (choices[0] if choices else "Sin cámaras disponibles"))
-        self.camera_hint.config(text=(f"{len(choices)} cámara(s) detectada(s). Selecciona una."
-                                      if choices else (error or "No se detectaron cámaras. Revisa permisos y conexión.")))
+        policy = camera_start_policy(
+            len(found),
+            capture_active=self.capture is not None,
+            generator_active=self.generator is not None,
+        )
+        if policy == "unavailable":
+            self._camera_selection_required = False
+            self.camera_selection.set("Sin cámaras disponibles")
+            self.camera_hint.config(text=error or "No se detectaron cámaras. Comprueba permisos y conexión.", fg="#fbbf24")
+        elif policy == "auto_start":
+            self._camera_selection_required = False
+            self.camera_selection.set(choices[0])
+            self.camera_hint.config(text="Una cámara detectada: iniciando automáticamente…", fg=ACCENT)
+            self.toggle_captura()
+        elif policy == "choose":
+            # Nunca elegimos arbitrariamente una webcam cuando hay varias.
+            # Si el usuario ya eligió una anteriormente, respetamos esa elección.
+            selected = next((label for label, index in found if index == previous), None)
+            self._camera_selection_required = selected is None
+            self.camera_selection.set(selected or "Selecciona una cámara…")
+            self.camera_hint.config(
+                text=("Cámara anterior conservada. Pulsa Iniciar captura." if selected
+                      else f"{len(found)} cámaras detectadas. Elige cuál utilizar en la lista."),
+                fg=ACCENT if selected else "#fbbf24",
+            )
+        else:
+            self._camera_selection_required = False
+            selected = next((label for label, index in found if index == previous), None)
+            self.camera_selection.set(selected or choices[0])
+            self.camera_hint.config(text="Dispositivo detectado; se mantiene la fuente activa.", fg=MUTED)
 
     def toggle_generacion(self) -> None:
         if self.generator is not None:
@@ -484,7 +526,7 @@ class VideoFrequencyApp:
         if result is None:
             return
 
-        self.metrics_label.config(text=f"FPS: {result.estimated_fps:.1f}  ·  Límite: {result.nyquist_hz:.1f} Hz")
+        self.metrics_label.config(text=f"FPS: {result.estimated_fps:.1f} · Nyquist: {result.nyquist_hz:.1f} Hz · Resolución: {result.resolution_hz:.2f} Hz")
         requested = self.slider_gen.get() if self.generator is not None else None
         # Cerca de Nyquist la señal sintética puede plegarse y dar una lectura falsa.
         invalid_test = requested is not None and requested >= 0.4 * result.estimated_fps
@@ -497,7 +539,11 @@ class VideoFrequencyApp:
             self.canvas.draw_idle()
             self._last_plot_at = time.monotonic()
 
-        if invalid_test:
+        if result.sampling_jitter is not None and result.sampling_jitter > 0.25:
+            self.freq_label.config(text="Medición no fiable: FPS irregulares")
+            self.quality_label.config(text="La cámara entrega frames a intervalos demasiado variables. Mejora iluminación, reduce carga o usa otra cámara.", fg="#fbbf24")
+            self.bpm_label.config(text="")
+        elif invalid_test:
             self.freq_label.config(text="Prueba fuera del rango fiable")
             self.quality_label.config(text=f"Baja la prueba por debajo de {0.4 * result.estimated_fps:.1f} Hz o mejora los FPS.", fg="#fbbf24")
             self.bpm_label.config(text="")
