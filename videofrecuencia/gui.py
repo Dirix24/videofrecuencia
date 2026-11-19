@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import csv
 import time
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 
 import cv2
 import numpy as np
@@ -17,6 +16,7 @@ from matplotlib.figure import Figure
 from .analysis import FrequencyAnalyzer, roi_mean_intensity
 from .capture import VideoCaptureThread
 from .generator import SyntheticSignalGenerator
+from .storage import append_measurements, export_measurements
 
 BG = "#0b1220"
 PANEL_BG = "#172338"
@@ -31,8 +31,8 @@ class VideoFrequencyApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Análisis de frecuencia visual")
-        self.root.geometry("1100x780")
-        self.root.minsize(900, 700)
+        self.root.geometry("1180x800")
+        self.root.minsize(950, 700)
         self.root.configure(bg=BG)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -45,6 +45,11 @@ class VideoFrequencyApp:
         self._last_plot_at = 0.0
         self._last_frame_at = 0.0
         self._last_frequency_setting = 3.0
+        self.autosave_path: str | None = None
+        self.autosave_enabled = False
+        self._autosave_index = 0
+        self._last_autosave_at = time.monotonic()
+        self._last_recorded_at = 0.0
 
         self._build_layout()
         self._tick()
@@ -54,13 +59,24 @@ class VideoFrequencyApp:
         tk.Label(self.root, text="Medición de variaciones periódicas de luz · cámara / prueba",
                  bg=BG, fg=MUTED, font=("DejaVu Sans", 10)).pack(pady=(12, 4))
 
+        self.root.option_add("*Font", "TkDefaultFont 10")
         main = tk.Frame(self.root, bg=BG)
         main.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
 
         # --- Panel de control ---
-        control = tk.Frame(main, bg=PANEL_BG, width=280)
-        control.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
-        control.pack_propagate(False)
+        # Panel desplazable: mantiene todas las opciones accesibles en pantallas pequeñas.
+        sidebar = tk.Frame(main, bg=PANEL_BG, width=310)
+        sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 12), pady=5)
+        sidebar.pack_propagate(False)
+        scroll_canvas = tk.Canvas(sidebar, bg=PANEL_BG, highlightthickness=0, bd=0)
+        scroll_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar = ttk.Scrollbar(sidebar, orient=tk.VERTICAL, command=scroll_canvas.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        scroll_canvas.configure(yscrollcommand=scrollbar.set)
+        control = tk.Frame(scroll_canvas, bg=PANEL_BG)
+        control_window = scroll_canvas.create_window((0, 0), window=control, anchor="nw")
+        control.bind("<Configure>", lambda _e: scroll_canvas.configure(scrollregion=scroll_canvas.bbox("all")))
+        scroll_canvas.bind("<Configure>", lambda e: scroll_canvas.itemconfigure(control_window, width=e.width))
 
         tk.Label(
             control, text="PANEL DE CONTROL", font=("DejaVu Sans", 11, "bold"), fg=FG, bg=PANEL_BG
@@ -131,6 +147,19 @@ class VideoFrequencyApp:
             font=("Arial", 10),
         )
         self.btn_guardar.pack(fill=tk.X, padx=15, pady=(10, 6))
+        tk.Label(control, text="GUARDADO DE DATOS", fg=ACCENT, bg=PANEL_BG,
+                 font=("TkDefaultFont", 10, "bold")).pack(anchor="w", padx=15, pady=(12, 5))
+        self.autosave_var = tk.BooleanVar(value=False)
+        self.autosave_checkbox = tk.Checkbutton(
+            control, text="Autoguardar en CSV", variable=self.autosave_var,
+            command=self._toggle_autosave, bg=PANEL_BG, fg=FG, selectcolor="#334155",
+            activebackground=PANEL_BG, activeforeground=FG, anchor="w")
+        self.autosave_checkbox.pack(fill=tk.X, padx=12)
+        tk.Button(control, text="Elegir archivo de autoguardado…", command=self._choose_autosave_file,
+                  bg="#334155", fg=FG).pack(fill=tk.X, padx=15, pady=(4, 3))
+        self.autosave_label = tk.Label(control, text="Desactivado · elige una ruta para activarlo",
+                                      bg=PANEL_BG, fg=MUTED, wraplength=265, justify=tk.LEFT)
+        self.autosave_label.pack(fill=tk.X, padx=15, pady=(1, 5))
         tk.Button(control, text="Reiniciar medición", command=self._reset_measurement,
                   bg="#334155", fg=FG).pack(fill=tk.X, padx=15, pady=4)
 
@@ -248,9 +277,13 @@ class VideoFrequencyApp:
 
     def _reset_measurement(self) -> None:
         self.analyzer.reset()
+        self._flush_autosave()
         self.history.clear()
+        self._autosave_index = 0
+        self._last_recorded_at = 0.0
         self._t0 = time.monotonic()
         self._last_frame_at = 0.0
+        self._last_autosave_at = time.monotonic()
         self.freq_label.config(text="Frecuencia: recopilando datos…")
         self.metrics_label.config(text="FPS: --  ·  Límite: --")
         self.quality_label.config(text="Calidad: esperando muestras")
@@ -271,6 +304,68 @@ class VideoFrequencyApp:
             self.btn_generar.config(text="Generar señal de prueba", bg=BLUE)
             self.status_label.config(text="Estado: en espera")
 
+    def _choose_autosave_file(self) -> None:
+        path = filedialog.asksaveasfilename(
+            title="Selecciona el CSV de autoguardado",
+            defaultextension=".csv", filetypes=[("Archivos CSV", "*.csv")],
+            initialfile="mediciones.csv",
+        )
+        if not path:
+            return
+        # El autoguardado añade filas; nunca sobrescribe un archivo existente.
+        try:
+            from pathlib import Path
+            import csv
+            existing = Path(path)
+            if existing.exists() and existing.stat().st_size:
+                with existing.open("r", encoding="utf-8-sig", newline="") as stream:
+                    header = next(csv.reader(stream), ())
+                if tuple(header) != ("t_segundos", "frecuencia_dominante_hz"):
+                    messagebox.showerror("Autoguardado", "El archivo elegido no tiene el formato CSV de mediciones.")
+                    return
+        except (OSError, UnicodeError, csv.Error) as exc:
+            messagebox.showerror("Autoguardado", f"No se puede abrir el archivo: {exc}")
+            return
+        self._flush_autosave()
+        self.autosave_path = path
+        self.autosave_enabled = True
+        self.autosave_var.set(True)
+        self._autosave_index = len(self.history)
+        self.autosave_label.config(text=f"Activo · {path}", fg=ACCENT)
+
+    def _toggle_autosave(self) -> None:
+        if self.autosave_var.get():
+            if not self.autosave_path:
+                self._choose_autosave_file()
+                if not self.autosave_path:
+                    self.autosave_var.set(False)
+                return
+            self.autosave_enabled = True
+            self._autosave_index = len(self.history)
+            self.autosave_label.config(text=f"Activo · {self.autosave_path}", fg=ACCENT)
+        else:
+            self._flush_autosave()
+            self.autosave_enabled = False
+            self.autosave_label.config(text="Pausado · archivo conservado", fg=MUTED)
+
+    def _flush_autosave(self) -> None:
+        if not self.autosave_enabled or not self.autosave_path:
+            return
+        pending = self.history[self._autosave_index:]
+        if not pending:
+            return
+        try:
+            written = append_measurements(self.autosave_path, pending)
+        except (OSError, ValueError, UnicodeError) as exc:
+            self.autosave_enabled = False
+            self.autosave_var.set(False)
+            self.autosave_label.config(text="Error al guardar · exporta los datos manualmente", fg="#fbbf24")
+            messagebox.showerror("Autoguardado", f"No se pudo guardar el CSV: {exc}")
+            return
+        self._autosave_index += written
+        self._last_autosave_at = time.monotonic()
+        self.autosave_label.config(text=f"Guardado · {self.autosave_path}", fg=ACCENT)
+
     def exportar_csv(self) -> None:
         if not self.history:
             messagebox.showinfo("Exportar", "Todavía no hay datos que exportar.")
@@ -283,10 +378,7 @@ class VideoFrequencyApp:
         if not path:
             return
         try:
-            with open(path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow(["t_segundos", "frecuencia_dominante_hz"])
-                writer.writerows(self.history)
+            export_measurements(path, self.history)
         except OSError as exc:
             messagebox.showerror("Exportar", f"No se pudo guardar el CSV: {exc}")
             return
@@ -295,6 +387,7 @@ class VideoFrequencyApp:
     def _on_close(self) -> None:
         if self._tick_job is not None:
             self.root.after_cancel(self._tick_job)
+        self._flush_autosave()
         self._detener_captura()
         self._detener_generacion()
         self.root.destroy()
@@ -328,6 +421,8 @@ class VideoFrequencyApp:
             self._render_frame(frame_bgr)
             self._update_spectrum()
 
+        if self.autosave_enabled and time.monotonic() - self._last_autosave_at >= 2.0:
+            self._flush_autosave()
         self._tick_job = self.root.after(30, self._tick)
 
     def _render_frame(self, frame_bgr: np.ndarray) -> None:
@@ -376,7 +471,11 @@ class VideoFrequencyApp:
                 )
             else:
                 self.bpm_label.config(text="")
-            self.history.append((time.monotonic() - self._t0, result.dominant_freq_hz))
+            now = time.monotonic()
+            # Registrar una vez por segundo, no una fila por redibujado de GUI.
+            if now - self._last_recorded_at >= 1.0:
+                self.history.append((now - self._t0, result.dominant_freq_hz))
+                self._last_recorded_at = now
         else:
             self.freq_label.config(text="Frecuencia: sin detección fiable")
             self.quality_label.config(text="Sin pico suficientemente claro: evita interpretar ruido como una medición.", fg="#fbbf24")
