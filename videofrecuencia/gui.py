@@ -32,7 +32,7 @@ class VideoFrequencyApp:
         self.root = root
         self.root.title("Análisis de frecuencia visual")
         self.root.geometry("1100x780")
-        self.root.minsize(900, 650)
+        self.root.minsize(900, 700)
         self.root.configure(bg=BG)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -134,11 +134,9 @@ class VideoFrequencyApp:
         tk.Button(control, text="Reiniciar medición", command=self._reset_measurement,
                   bg="#334155", fg=FG).pack(fill=tk.X, padx=15, pady=4)
 
-        tk.Label(control, text="GUÍA RÁPIDA", bg=PANEL_BG, fg=ACCENT,
-                 font=("DejaVu Sans", 10, "bold")).pack(anchor="w", padx=15, pady=(10, 4))
-        tk.Label(control, text="1. Prueba con señal sintética.\n2. Activa la cámara y enfoca una luz.\n3. Espera a que se llene la ventana.\n4. Consulta Hz, FPS y el espectro.",
+        tk.Label(control, text="Consejo: empieza con 3 Hz y comprueba los FPS.",
                  bg=PANEL_BG, fg=MUTED, justify=tk.LEFT, wraplength=245,
-                 font=("DejaVu Sans", 9)).pack(anchor="w", padx=15)
+                 font=("DejaVu Sans", 9)).pack(anchor="w", padx=15, pady=(8, 2))
 
         self.status_label = tk.Label(
             control,
