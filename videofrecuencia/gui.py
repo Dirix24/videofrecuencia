@@ -293,6 +293,7 @@ class VideoFrequencyApp:
 
     def _detener_captura(self) -> None:
         if self.capture is not None:
+            self._flush_autosave()
             self.capture.stop()
             self.capture = None
             self.btn_capturar.config(text="Iniciar captura (cámara)", bg=BLUE)
@@ -300,6 +301,7 @@ class VideoFrequencyApp:
 
     def _detener_generacion(self) -> None:
         if self.generator is not None:
+            self._flush_autosave()
             self.generator = None
             self.btn_generar.config(text="Generar señal de prueba", bg=BLUE)
             self.status_label.config(text="Estado: en espera")
