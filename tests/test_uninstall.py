@@ -27,6 +27,7 @@ def test_uninstall_removes_only_project_directory(tmp_path, monkeypatch):
     other = tmp_path / "keep.txt"
     other.write_text("conservar")
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr("uninstall.os.chdir", lambda _path: None)
     uninstall(project, platform="linux")
     assert not project.exists()
     assert other.read_text() == "conservar"
