@@ -10,7 +10,7 @@ VideoFrecuencia es una aplicación de escritorio en Python que mide **variacione
 
 | Función | Descripción |
 | --- | --- |
-| Cámara en directo | Captura vídeo con OpenCV sin bloquear la ventana; selección de cámara por índice (0–9) |
+| Cámara en directo | Captura vídeo con OpenCV sin bloquear la ventana; detección automática de cámaras disponibles y selector desplegable |
 | Región de interés (ROI) | Ajusta el cuadrado central entre el 10 % y el 100 % de la imagen |
 | FFT | Calcula el espectro con ventana configurable de 3 a 12 segundos |
 | Detección de señal | Evita mostrar frecuencias cuando la imagen es prácticamente plana, la ventana es demasiado corta o no destaca un pico claro |
@@ -56,7 +56,7 @@ La señal sintética se genera desde el reloj del ordenador y la frecuencia real
 
 ### 2. Analiza una fuente real
 
-1. Selecciona el índice de cámara (normalmente **0**; prueba **1** si tienes una segunda cámara) y pulsa **Iniciar captura (cámara)** y autoriza el acceso si tu sistema lo solicita.
+1. Espera a que termine la búsqueda automática de cámaras. Si conectas otra webcam, pulsa **Buscar cámaras disponibles**. Selecciona la cámara que quieras en la lista y pulsa **Iniciar captura (cámara)** y autoriza el acceso si tu sistema lo solicita.
 2. Apunta a una zona con iluminación estable y procura mantener la cámara quieta.
 3. Coloca la fuente que quieres estudiar dentro del **cuadrado central** y ajusta el tamaño de la región (ROI).
 4. Ajusta la ventana de análisis (3–12 s), espera a que se recopilen muestras y observa el gráfico, los FPS y el estado de calidad.
@@ -67,9 +67,9 @@ La luz ambiente, los movimientos, la exposición automática, el balance de blan
 ### 3. Guarda resultados donde quieras
 
 - **Guardar manualmente:** pulsa **Exportar histórico a CSV**, elige la carpeta y escribe el nombre que prefieras (por ejemplo, `experimento-01.csv`). Exporta las medidas de la sesión actual. Como en cualquier diálogo de guardado, confirma si decides reemplazar un archivo existente.
-- **Autoguardado opcional:** activa **Autoguardar en CSV** y elige el archivo y la carpeta mediante **Elegir archivo de autoguardado…**. No se guardan datos automáticamente sin elegir antes una ruta.
+- **Autoguardado opcional:** activa **Autoguardar en CSV** y elige el archivo y la carpeta mediante **Elegir archivo de autoguardado…**. El archivo se crea inmediatamente en la ruta seleccionada, con la cabecera CSV, incluso si todavía no hay mediciones. No se guardan datos automáticamente sin elegir antes una ruta.
 - **Cómo funciona:** cada 2 segundos, y al detener o cerrar, se añaden las mediciones pendientes al CSV elegido. Si el archivo ya existe, debe tener la cabecera correcta y las filas nuevas se **añaden**, sin borrar las anteriores. Se puede pausar el autoguardado.
-- **Datos:** `t_segundos` y `frecuencia_dominante_hz`; se registra aproximadamente una medida válida por segundo, no cada repintado de pantalla. Los segundos se reinician al iniciar otra sesión, así que si reutilizas un CSV debes interpretar cada tramo como una sesión diferente.
+- **Datos:** `t_segundos` y `frecuencia_dominante_hz`; se registra aproximadamente una muestra por segundo, no cada repintado de pantalla. Si no hay una frecuencia fiable, la segunda columna queda vacía en lugar de inventar un valor. Los segundos se reinician al iniciar otra sesión, así que si reutilizas un CSV debes interpretar cada tramo como una sesión diferente.
 - **Errores:** si la carpeta no tiene permisos o el disco falla, la aplicación avisa y detiene el autoguardado. Puedes exportar manualmente las medidas que permanezcan en memoria. No es una base de datos ni garantiza la recuperación ante apagados inesperados.
 
 Al iniciar una nueva captura o señal de prueba se limpia el histórico de memoria, tras intentar guardar lo pendiente.
@@ -93,7 +93,7 @@ No necesitas una cámara de marca específica. Para empezar, **cualquier webcam 
 - **Preferible:** exposición, ganancia y enfoque configurables manualmente, y opción de desactivar exposición automática. Las correcciones automáticas de brillo introducen variaciones no deseadas.
 - **No recomendado para mediciones serias:** depender únicamente de los FPS anunciados en la caja; revisa siempre los FPS que muestra la aplicación. Tampoco una webcam de 60 FPS permite medir directamente un parpadeo de 50/60 Hz con este algoritmo.
 
-El índice de cámara selecciona el dispositivo, **no configura su resolución ni garantiza una tasa de FPS concreta**. El método mide cambios de luminosidad media, no la frecuencia de refresco real de una pantalla ni PWM de alta frecuencia. Para 50/60 Hz y superiores se requiere otro sensor o un sistema de adquisición adecuado.
+El selector de cámara selecciona el dispositivo, **no configura su resolución ni garantiza una tasa de FPS concreta**. El método mide cambios de luminosidad media, no la frecuencia de refresco real de una pantalla ni PWM de alta frecuencia. Para 50/60 Hz y superiores se requiere otro sensor o un sistema de adquisición adecuado.
 
 ## Pruebas automáticas
 
@@ -111,7 +111,7 @@ La interfaz usa Tkinter, Matplotlib y OpenCV con un panel de controles desplazab
 
 ## Nuevas opciones de la interfaz
 
-- **Dispositivo de cámara:** elige índice 0–9 antes de iniciar la captura.
+- **Dispositivo de cámara:** el programa busca cámaras accesibles automáticamente y las muestra en una lista. Si hay dos cámaras, puedes escoger entre ellas. Pulsa **Buscar cámaras disponibles** después de conectar o desconectar una. En algunos sistemas la enumeración puede tardar o depender de permisos; no se garantiza el nombre comercial del dispositivo.
 - **Región central (%):** ajusta qué porcentaje del vídeo se usa para calcular el brillo medio.
 - **Ventana (s):** una ventana larga mejora la resolución de frecuencia, pero tarda más en reaccionar a los cambios.
 - **Reiniciar medición:** intenta guardar los datos pendientes y limpia el espectro y el histórico de la sesión actual.
@@ -119,6 +119,14 @@ La interfaz usa Tkinter, Matplotlib y OpenCV con un panel de controles desplazab
 - **Prueba sintética:** por defecto se limita el deslizador a 10 Hz; la interfaz avisa si el valor seleccionado supera el margen de muestreo real.
 
 **Límite fundamental:** ninguna detección basada solo en FPS puede demostrar que una señal real no está aliasada; por eso los resultados siguen siendo experimentales.
+
+## Comprobar la detección y el guardado
+
+1. Conecta una o dos cámaras, abre el programa y espera la búsqueda automática. Comprueba que aparezcan en el selector. Si conectas otra cámara después, pulsa **Buscar cámaras disponibles**.
+2. Inicia una captura, cambia de cámara deteniendo antes la anterior y comprueba que la imagen corresponde al dispositivo elegido.
+3. Pulsa **Elegir archivo de autoguardado…**, selecciona por ejemplo la carpeta Documentos y el nombre `prueba-camara.csv`. El archivo debe aparecer **inmediatamente**, aunque esté vacío de medidas (solo cabecera).
+4. Mantén una señal sintética de 3 Hz unos segundos y verifica que se añaden filas al CSV. Si no hay detección fiable, la frecuencia queda vacía.
+5. Prueba **Exportar histórico a CSV** con otra carpeta y nombre. Comprueba que el archivo se crea allí.
 
 ## Solución de problemas
 
