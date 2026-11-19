@@ -38,6 +38,7 @@ class SpectrumResult:
     duration_seconds: float | None = None
     sampling_jitter: float | None = None
     resolution_hz: float | None = None
+    confidence: str = "insuficiente"
 
 
 @dataclass
@@ -172,6 +173,11 @@ class FrequencyAnalyzer:
             duration_seconds=duration,
             sampling_jitter=sampling_jitter,
             resolution_hz=resolution_hz,
+            confidence=(
+                "insuficiente" if dominant_freq is None else
+                "estable" if peak_snr is not None and peak_snr >= 10 and sampling_jitter <= 0.10 else
+                "orientativa"
+            ),
         )
 
 
