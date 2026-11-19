@@ -72,7 +72,7 @@ La luz ambiente, los movimientos, la exposición automática, el balance de blan
 - **Datos:** `t_segundos` y `frecuencia_dominante_hz`; se registra aproximadamente una muestra por segundo, no cada repintado de pantalla. Si no hay una frecuencia fiable, la segunda columna queda vacía en lugar de inventar un valor. Los segundos se reinician al iniciar otra sesión, así que si reutilizas un CSV debes interpretar cada tramo como una sesión diferente.
 - **Errores:** si la carpeta no tiene permisos o el disco falla, la aplicación avisa y detiene el autoguardado. Puedes exportar manualmente las medidas que permanezcan en memoria. No es una base de datos ni garantiza la recuperación ante apagados inesperados.
 
-Al iniciar una nueva captura o señal de prueba se limpia el histórico de memoria, tras intentar guardar lo pendiente.
+Al cambiar entre cámara y señal de prueba se reinicia el análisis espectral, pero **se conserva el histórico** y se intenta guardar lo pendiente. Solo el botón **Reiniciar medición** limpia el histórico en memoria.
 
 ## Mejoras de estimación
 
@@ -111,6 +111,22 @@ python -m compileall -q videofrecuencia
 ```
 
 Las pruebas verifican detección de señales sintéticas, ausencia de detección en imágenes planas o con ruido débil, validación de datos y situaciones simuladas de desconexión de cámara. **No sustituyen la comprobación con una webcam real y tu sistema operativo.**
+
+## Compatibilidad con Linux, Windows y macOS
+
+La aplicación está diseñada para los tres sistemas de escritorio con Python, Tkinter, OpenCV y Matplotlib. **No está verificada con todas las versiones, controladores y cámaras**; cada sistema debe probarse con hardware real. No es una aplicación para Android o iOS.
+
+- **Linux (Debian, Ubuntu, MX):** instala `python3-tk` y `python3-venv` desde el gestor de paquetes; crea el entorno con `python3 -m venv .venv` y ejecuta `.venv/bin/python app.py`. El descubrimiento omite nodos V4L2 secundarios cuando el sistema los identifica.
+- **Windows:** instala Python con Tkinter incluido, crea el entorno con `py -m venv .venv`, instala dependencias con `.venv\\Scripts\\python -m pip install -r requirements.txt` y ejecuta `.venv\\Scripts\\python app.py`. Autoriza la cámara en la configuración de privacidad.
+- **macOS:** instala Python con soporte Tkinter, crea el entorno con `python3 -m venv .venv`, instala con `.venv/bin/python -m pip install -r requirements.txt` y ejecuta `.venv/bin/python app.py`. Autoriza el acceso a la cámara cuando macOS lo solicite.
+- En todos los sistemas, cierra aplicaciones que estén usando la webcam; si no aparece, pulsa **Buscar cámaras disponibles**. Los índices y permisos dependen del sistema.
+
+## Gráfica fluida y validación de estimaciones
+
+- El espectro se actualiza hasta unas 10 veces por segundo y suaviza sus magnitudes y el rango vertical. **El suavizado es solo visual**: no altera las mediciones, los FPS ni los valores CSV.
+- Las etiquetas **Estable**, **Orientativa** e **Insuficiente** dependen del contraste espectral y de la regularidad de muestreo; no equivalen a una precisión certificada.
+- Las pruebas automáticas comparan señales sintéticas de 1, 2,5, 3,3 y 5 Hz con sus valores conocidos. Son validación del algoritmo, **no calibración de una cámara física**.
+- Para calibrar en el mundo real, usa una fuente luminosa con frecuencia conocida y controlada, cámara fija, exposición manual si está disponible y FPS suficientes; repite medidas y compara el error. Una linterna movida a mano no es una referencia calibrada.
 
 ## Interfaz y compatibilidad
 
