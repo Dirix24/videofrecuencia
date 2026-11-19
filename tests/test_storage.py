@@ -3,7 +3,7 @@ import csv
 
 import pytest
 
-from videofrecuencia.storage import HEADER, append_measurements, export_measurements
+from videofrecuencia.storage import HEADER, append_measurements, export_measurements, initialize_measurements
 
 
 def test_autosave_creates_header_and_appends_without_overwriting(tmp_path):
@@ -44,3 +44,20 @@ def test_autosave_accepts_utf8_bom_header(tmp_path):
     with path.open(encoding="utf-8-sig", newline="") as f:
         rows = list(csv.reader(f))
     assert rows[-1] == ["1.0", "4.0"]
+
+
+def test_selected_autosave_file_is_created_before_first_measurement(tmp_path):
+    path = tmp_path / "carpeta con espacios" / "mis datos.csv"
+    path.parent.mkdir()
+    initialize_measurements(path)
+    assert path.exists()
+    assert path.read_text(encoding="utf-8") == ",".join(HEADER) + "\n"
+
+
+def test_missing_frequency_is_saved_as_blank_not_fake_zero(tmp_path):
+    path = tmp_path / "mediciones.csv"
+    append_measurements(path, [(1.0, None), (2.0, 3.0)])
+    with path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.reader(handle))
+    assert rows[1] == ["1.0", ""]
+    assert rows[2] == ["2.0", "3.0"]
