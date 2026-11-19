@@ -37,6 +37,7 @@ class VideoFrequencyApp:
         self.analyzer = FrequencyAnalyzer()
         self.history: list[tuple[float, float]] = []  # (t, freq_dominante)
         self._t0 = time.monotonic()
+        self._tick_job = None
 
         self._build_layout()
         self._tick()
@@ -218,13 +219,19 @@ class VideoFrequencyApp:
         )
         if not path:
             return
-        with open(path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["t_segundos", "frecuencia_dominante_hz"])
-            writer.writerows(self.history)
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["t_segundos", "frecuencia_dominante_hz"])
+                writer.writerows(self.history)
+        except OSError as exc:
+            messagebox.showerror("Exportar", f"No se pudo guardar el CSV: {exc}")
+            return
         messagebox.showinfo("Exportar", f"Guardado en:\n{path}")
 
     def _on_close(self) -> None:
+        if self._tick_job is not None:
+            self.root.after_cancel(self._tick_job)
         self._detener_captura()
         self._detener_generacion()
         self.root.destroy()
@@ -253,7 +260,7 @@ class VideoFrequencyApp:
             self._render_frame(frame_bgr)
             self._update_spectrum()
 
-        self.root.after(30, self._tick)
+        self._tick_job = self.root.after(30, self._tick)
 
     def _render_frame(self, frame_bgr: np.ndarray) -> None:
         h, w = frame_bgr.shape[:2]
