@@ -526,7 +526,7 @@ class VideoFrequencyApp:
         if result is None:
             return
 
-        self.metrics_label.config(text=f"FPS: {result.estimated_fps:.1f}  ·  Límite: {result.nyquist_hz:.1f} Hz")
+        self.metrics_label.config(text=f"FPS: {result.estimated_fps:.1f} · Nyquist: {result.nyquist_hz:.1f} Hz · Resolución: {result.resolution_hz:.2f} Hz")
         requested = self.slider_gen.get() if self.generator is not None else None
         # Cerca de Nyquist la señal sintética puede plegarse y dar una lectura falsa.
         invalid_test = requested is not None and requested >= 0.4 * result.estimated_fps
@@ -539,7 +539,11 @@ class VideoFrequencyApp:
             self.canvas.draw_idle()
             self._last_plot_at = time.monotonic()
 
-        if invalid_test:
+        if result.sampling_jitter is not None and result.sampling_jitter > 0.25:
+            self.freq_label.config(text="Medición no fiable: FPS irregulares")
+            self.quality_label.config(text="La cámara entrega frames a intervalos demasiado variables. Mejora iluminación, reduce carga o usa otra cámara.", fg="#fbbf24")
+            self.bpm_label.config(text="")
+        elif invalid_test:
             self.freq_label.config(text="Prueba fuera del rango fiable")
             self.quality_label.config(text=f"Baja la prueba por debajo de {0.4 * result.estimated_fps:.1f} Hz o mejora los FPS.", fg="#fbbf24")
             self.bpm_label.config(text="")
