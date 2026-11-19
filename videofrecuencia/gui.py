@@ -582,7 +582,7 @@ class VideoFrequencyApp:
             self.bpm_label.config(text="")
         elif result.dominant_freq_hz is not None:
             self.freq_label.config(text=f"Frecuencia: {result.dominant_freq_hz:.2f} Hz")
-            quality = "Estable" if result.peak_snr >= 10 and result.sampling_jitter <= 0.10 else "Orientativa"
+            quality = "Estable" if result.confidence == "estable" else "Orientativa"
             self.quality_label.config(
                 text=f"{quality} · contraste {result.peak_snr:.1f}× · variación FPS {result.sampling_jitter:.0%}",
                 fg=ACCENT if quality == "Estable" else "#fbbf24",
