@@ -86,14 +86,19 @@ class VideoCaptureThread:
 
     def stop(self) -> None:
         self._running.clear()
-        if self._cap is not None:
-            self._cap.release()
         if self._thread is not None:
-            self._thread.join(timeout=2.0)
+            # Esperar a que termine read() antes de liberar V4L2 evita
+            # carreras de descriptores (VIDIOC_QBUF: Bad file descriptor).
+            self._thread.join(timeout=1.0)
+            if self._thread.is_alive() and self._cap is not None:
+                self._cap.release()  # desbloqueo de emergencia
+                self._thread.join(timeout=1.0)
             if self._thread.is_alive():
                 self.last_error = "La cámara no terminó de detenerse."
                 return
             self._thread = None
+        if self._cap is not None:
+            self._cap.release()
         self._cap = None
 
     @property
