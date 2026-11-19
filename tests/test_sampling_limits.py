@@ -14,6 +14,8 @@ def test_does_not_report_peak_near_nyquist():
     assert result is not None
     assert result.nyquist_hz is not None
     assert abs(result.nyquist_hz - 12) < 0.01
+    # La comparación debe contemplar redondeos binarios en los bins de la FFT.
+    # Ninguna frecuencia reportada puede alcanzar o superar el margen seguro.
     assert result.dominant_freq_hz is None or result.dominant_freq_hz < fps * 0.4
 
 
