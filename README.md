@@ -10,13 +10,13 @@ VideoFrecuencia es una aplicación de escritorio en Python que mide **variacione
 
 | Función | Descripción |
 | --- | --- |
-| Cámara en directo | Captura vídeo con OpenCV sin bloquear la ventana |
-| Región de interés (ROI) | Analiza el brillo medio del cuadrado central |
-| FFT | Calcula el espectro de la señal de luminosidad en una ventana temporal |
+| Cámara en directo | Captura vídeo con OpenCV sin bloquear la ventana; selección de cámara por índice (0–9) |
+| Región de interés (ROI) | Ajusta el cuadrado central entre el 10 % y el 100 % de la imagen |
+| FFT | Calcula el espectro con ventana configurable de 3 a 12 segundos |
 | Detección de señal | Evita mostrar frecuencias cuando la imagen es prácticamente plana, la ventana es demasiado corta o no destaca un pico claro |
 | Diagnóstico | Indica FPS estimados, límite de Nyquist y contraste del pico |
 | Señal sintética | Genera un parpadeo configurable para verificar el analizador |
-| CSV | Exporta el histórico de frecuencias detectadas |
+| CSV | Exporta a un archivo elegido y ofrece autoguardado opcional a una ruta elegida |
 
 ## Inicio rápido
 
@@ -52,31 +52,48 @@ En Windows, activa el entorno con `.venv\Scripts\activate` y ejecuta `python app
 4. Comprueba que el espectro muestra un pico cerca de 3 Hz y que la frecuencia indicada se aproxima a la configurada.
 5. Detén la señal antes de cambiar de modo.
 
-La señal sintética se genera desde el reloj del ordenador y la frecuencia real observada puede variar si la interfaz no puede dibujar frames con suficiente rapidez. Por encima de la mitad de los FPS reales pueden aparecer frecuencias falsas por *aliasing*.
+La señal sintética se genera desde el reloj del ordenador y la frecuencia real observada puede variar si la interfaz no puede dibujar frames con suficiente rapidez. La interfaz impide interpretar como válida una prueba configurada a partir del 40 % de los FPS observados, dejando margen respecto a Nyquist. **Ejemplo real:** 15 Hz con 23,7 FPS no se puede medir correctamente; puede aparecer una frecuencia falsa cercana a 8–9 Hz por *aliasing*. Para pruebas repetibles, empieza con 2–5 Hz y comprueba el indicador FPS.
 
 ### 2. Analiza una fuente real
 
-1. Pulsa **Iniciar captura (cámara)** y autoriza el acceso si tu sistema lo solicita.
+1. Selecciona el índice de cámara (normalmente **0**; prueba **1** si tienes una segunda cámara) y pulsa **Iniciar captura (cámara)** y autoriza el acceso si tu sistema lo solicita.
 2. Apunta a una zona con iluminación estable y procura mantener la cámara quieta.
-3. Coloca la fuente que quieres estudiar dentro del **cuadrado central**.
-4. Espera a que se recopilen muestras y observa el gráfico, los FPS y el estado de calidad.
+3. Coloca la fuente que quieres estudiar dentro del **cuadrado central** y ajusta el tamaño de la región (ROI).
+4. Ajusta la ventana de análisis (3–12 s), espera a que se recopilen muestras y observa el gráfico, los FPS y el estado de calidad.
 5. Si aparece **«sin detección fiable»**, no interpretes el pico más alto como una frecuencia confirmada.
 
 La luz ambiente, los movimientos, la exposición automática, el balance de blancos y los FPS variables pueden alterar las mediciones.
 
-### 3. Exporta resultados
+### 3. Guarda resultados donde quieras
 
-Usa **Exportar histórico a CSV**. El archivo contiene `t_segundos` y `frecuencia_dominante_hz` para las mediciones con pico detectado. Al iniciar una nueva captura o señal de prueba se limpia el histórico para no mezclar sesiones.
+- **Guardar manualmente:** pulsa **Exportar histórico a CSV**, elige la carpeta y escribe el nombre que prefieras (por ejemplo, `experimento-01.csv`). Exporta las medidas de la sesión actual. Como en cualquier diálogo de guardado, confirma si decides reemplazar un archivo existente.
+- **Autoguardado opcional:** activa **Autoguardar en CSV** y elige el archivo y la carpeta mediante **Elegir archivo de autoguardado…**. No se guardan datos automáticamente sin elegir antes una ruta.
+- **Cómo funciona:** cada 2 segundos, y al detener o cerrar, se añaden las mediciones pendientes al CSV elegido. Si el archivo ya existe, debe tener la cabecera correcta y las filas nuevas se **añaden**, sin borrar las anteriores. Se puede pausar el autoguardado.
+- **Datos:** `t_segundos` y `frecuencia_dominante_hz`; se registra aproximadamente una medida válida por segundo, no cada repintado de pantalla. Los segundos se reinician al iniciar otra sesión, así que si reutilizas un CSV debes interpretar cada tramo como una sesión diferente.
+- **Errores:** si la carpeta no tiene permisos o el disco falla, la aplicación avisa y detiene el autoguardado. Puedes exportar manualmente las medidas que permanezcan en memoria. No es una base de datos ni garantiza la recuperación ante apagados inesperados.
+
+Al iniciar una nueva captura o señal de prueba se limpia el histórico de memoria, tras intentar guardar lo pendiente.
 
 ## Cómo interpretar las medidas
 
 - **Hz:** ciclos de cambio de brillo por segundo; por ejemplo, 3 Hz son tres oscilaciones por segundo.
 - **FPS:** número estimado de muestras de vídeo por segundo, calculado a partir de los timestamps.
-- **Límite (Nyquist):** aproximadamente FPS / 2; una webcam de 30 FPS no puede medir de forma fiable un parpadeo de 50/60 Hz con este método.
+- **Límite (Nyquist):** teóricamente FPS / 2; por prudencia el analizador busca picos solo hasta el 40 % de los FPS estimados. Una webcam de 30 FPS no puede medir de forma fiable un parpadeo de 50/60 Hz con este método.
 - **Contraste espectral:** relación entre el pico y el fondo del espectro; no es un porcentaje de precisión ni una garantía de detección correcta.
 - **Sin detección fiable:** falta duración, variación luminosa suficiente o un pico claramente destacado. Es preferible a mostrar una cifra engañosa.
 
 La FFT se calcula sobre el brillo medio de la ROI, interpolando las muestras a intervalos uniformes y aplicando eliminación de tendencia y ventana de Hann. Este método es didáctico y no compensa todos los artefactos de la cámara.
+
+## ¿Qué cámara se recomienda?
+
+No necesitas una cámara de marca específica. Para empezar, **cualquier webcam USB compatible con UVC y OpenCV** que entregue vídeo estable suele servir. En Linux conviene comprobar que aparece como `/dev/video0` (o `/dev/video1`) y que funciona con otra aplicación de cámara.
+
+- **Para aprender y detectar oscilaciones lentas (1–5 Hz):** una webcam integrada o USB que entregue **30 FPS reales** con iluminación adecuada es suficiente para experimentar.
+- **Para mayor margen:** una webcam USB UVC con **720p a 60 FPS reales**, si el ordenador y el controlador admiten ese modo. Reducir resolución puede ayudar a sostener los FPS.
+- **Preferible:** exposición, ganancia y enfoque configurables manualmente, y opción de desactivar exposición automática. Las correcciones automáticas de brillo introducen variaciones no deseadas.
+- **No recomendado para mediciones serias:** depender únicamente de los FPS anunciados en la caja; revisa siempre los FPS que muestra la aplicación. Tampoco una webcam de 60 FPS permite medir directamente un parpadeo de 50/60 Hz con este algoritmo.
+
+El índice de cámara selecciona el dispositivo, **no configura su resolución ni garantiza una tasa de FPS concreta**. El método mide cambios de luminosidad media, no la frecuencia de refresco real de una pantalla ni PWM de alta frecuencia. Para 50/60 Hz y superiores se requiere otro sensor o un sistema de adquisición adecuado.
 
 ## Pruebas automáticas
 
@@ -87,6 +104,21 @@ python -m compileall -q videofrecuencia
 ```
 
 Las pruebas verifican detección de señales sintéticas, ausencia de detección en imágenes planas o con ruido débil, validación de datos y situaciones simuladas de desconexión de cámara. **No sustituyen la comprobación con una webcam real y tu sistema operativo.**
+
+## Interfaz y compatibilidad
+
+La interfaz usa Tkinter, Matplotlib y OpenCV con un panel de controles desplazable para pantallas de portátil. Los controles de archivo emplean el selector nativo de Linux, Windows o macOS cuando Tkinter lo proporciona. La apariencia puede variar según el sistema operativo, la escala de pantalla y el tema del escritorio.
+
+## Nuevas opciones de la interfaz
+
+- **Dispositivo de cámara:** elige índice 0–9 antes de iniciar la captura.
+- **Región central (%):** ajusta qué porcentaje del vídeo se usa para calcular el brillo medio.
+- **Ventana (s):** una ventana larga mejora la resolución de frecuencia, pero tarda más en reaccionar a los cambios.
+- **Reiniciar medición:** intenta guardar los datos pendientes y limpia el espectro y el histórico de la sesión actual.
+- **Autoguardar en CSV:** opción desactivada por defecto; elige la ubicación y el nombre de archivo, pausa o reanuda cuando quieras.
+- **Prueba sintética:** por defecto se limita el deslizador a 10 Hz; la interfaz avisa si el valor seleccionado supera el margen de muestreo real.
+
+**Límite fundamental:** ninguna detección basada solo en FPS puede demostrar que una señal real no está aliasada; por eso los resultados siguen siendo experimentales.
 
 ## Solución de problemas
 
@@ -105,6 +137,7 @@ Las pruebas verifican detección de señales sintéticas, ausencia de detección
 - `videofrecuencia/capture.py`: adquisición de vídeo en hilo independiente.
 - `videofrecuencia/analysis.py`: ROI, serie temporal, FFT y validación de picos.
 - `videofrecuencia/generator.py`: señal de prueba.
+- `videofrecuencia/storage.py`: exportación y autoguardado CSV portables.
 - `tests/`: pruebas de regresión.
 
 ## Estado del proyecto y límites

@@ -110,8 +110,11 @@ class FrequencyAnalyzer:
         freqs = np.fft.rfftfreq(n, d=1.0 / estimated_fps)
         magnitudes = np.abs(spectrum)
 
+        # Margen del 20 % respecto a Nyquist: evita reportar picos cerca del límite,
+        # donde las estimaciones con cámaras de FPS variables son poco fiables.
+        # No puede descartar aliasing de señales reales por encima de Nyquist.
         # Ignora la banda fuera del rango de interés (incluye la componente DC).
-        band = (freqs >= self.min_freq_hz) & (freqs <= min(self.max_freq_hz, estimated_fps / 2))
+        band = (freqs >= self.min_freq_hz) & (freqs <= min(self.max_freq_hz, estimated_fps * 0.4))
         dominant_freq = None
         bpm = None
         peak_snr = None
