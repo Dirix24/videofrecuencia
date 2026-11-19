@@ -10,7 +10,7 @@ VideoFrecuencia es una aplicación de escritorio en Python que mide **variacione
 
 | Función | Descripción |
 | --- | --- |
-| Cámara en directo | Captura vídeo con OpenCV sin bloquear la ventana; detección automática de cámaras disponibles y selector desplegable |
+| Cámara en directo | Captura vídeo con OpenCV sin bloquear la ventana; detección automática: una cámara se inicia sola; con varias eliges cuál usar |
 | Región de interés (ROI) | Ajusta el cuadrado central entre el 10 % y el 100 % de la imagen |
 | FFT | Calcula el espectro con ventana configurable de 3 a 12 segundos |
 | Detección de señal | Evita mostrar frecuencias cuando la imagen es prácticamente plana, la ventana es demasiado corta o no destaca un pico claro |
@@ -56,7 +56,7 @@ La señal sintética se genera desde el reloj del ordenador y la frecuencia real
 
 ### 2. Analiza una fuente real
 
-1. Espera a que termine la búsqueda automática de cámaras. Si conectas otra webcam, pulsa **Buscar cámaras disponibles**. Selecciona la cámara que quieras en la lista y pulsa **Iniciar captura (cámara)** y autoriza el acceso si tu sistema lo solicita.
+1. Espera a que termine la búsqueda automática de cámaras. **Si solo hay una cámara, se inicia automáticamente. Si hay dos o más, el programa te pide elegir una en la lista antes de iniciar.** Si conectas otra webcam, detén la captura y pulsa **Buscar cámaras disponibles** y autoriza el acceso si tu sistema lo solicita.
 2. Apunta a una zona con iluminación estable y procura mantener la cámara quieta.
 3. Coloca la fuente que quieres estudiar dentro del **cuadrado central** y ajusta el tamaño de la región (ROI).
 4. Ajusta la ventana de análisis (3–12 s), espera a que se recopilen muestras y observa el gráfico, los FPS y el estado de calidad.
@@ -111,7 +111,7 @@ La interfaz usa Tkinter, Matplotlib y OpenCV con un panel de controles desplazab
 
 ## Nuevas opciones de la interfaz
 
-- **Dispositivo de cámara:** el programa busca cámaras accesibles automáticamente y las muestra en una lista. Si hay dos cámaras, puedes escoger entre ellas. Pulsa **Buscar cámaras disponibles** después de conectar o desconectar una. En algunos sistemas la enumeración puede tardar o depender de permisos; no se garantiza el nombre comercial del dispositivo.
+- **Dispositivo de cámara:** el programa busca cámaras accesibles automáticamente y las muestra en una lista. Si hay una sola, inicia la captura sin pedirte nada. Si hay dos o más, espera tu elección; no selecciona una arbitrariamente. Pulsa **Buscar cámaras disponibles** después de conectar o desconectar una. En algunos sistemas la enumeración puede tardar o depender de permisos; no se garantiza el nombre comercial del dispositivo.
 - **Región central (%):** ajusta qué porcentaje del vídeo se usa para calcular el brillo medio.
 - **Ventana (s):** una ventana larga mejora la resolución de frecuencia, pero tarda más en reaccionar a los cambios.
 - **Reiniciar medición:** intenta guardar los datos pendientes y limpia el espectro y el histórico de la sesión actual.
