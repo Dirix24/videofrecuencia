@@ -36,6 +36,8 @@ class SpectrumResult:
     peak_snr: float | None = None
     nyquist_hz: float | None = None
     duration_seconds: float | None = None
+    sampling_jitter: float | None = None
+    resolution_hz: float | None = None
 
 
 @dataclass
@@ -86,6 +88,9 @@ class FrequencyAnalyzer:
         duration = timestamps[-1] - timestamps[0]
         if duration <= 0:
             return None
+        intervals = np.diff(timestamps)
+        median_interval = float(np.median(intervals))
+        sampling_jitter = float(np.std(intervals) / median_interval) if median_interval > 0 else float("inf")
         estimated_fps = (n - 1) / duration
         if not np.isfinite(estimated_fps) or estimated_fps <= 0:
             return None
@@ -123,6 +128,7 @@ class FrequencyAnalyzer:
         dominant_freq = None
         bpm = None
         peak_snr = None
+        resolution_hz = estimated_fps / n
         if np.any(band):
             band_freqs = freqs[band]
             band_mag = magnitudes[band]
@@ -134,8 +140,26 @@ class FrequencyAnalyzer:
                 if (duration >= self.min_duration_seconds
                         and float(np.std(detrended)) >= self.min_signal_std
                         and peak_snr >= self.min_peak_snr):
-                    dominant_freq = float(band_freqs[np.argmax(band_mag)])
-                    bpm = dominant_freq * 60.0
+                    peak_index = int(np.argmax(band_mag))
+                    dominant_freq = float(band_freqs[peak_index])
+                    # Interpolación parabólica sub-bin: mejora estimaciones
+                    # entre bins sin prometer resolución instrumental.
+                    if 0 < peak_index < len(band_mag) - 1:
+                        left, center, right = np.log(np.maximum(
+                            band_mag[peak_index - 1:peak_index + 2], 1e-12
+                        ))
+                        denominator = left - 2 * center + right
+                        if denominator < -1e-12:
+                            offset = float(np.clip(0.5 * (left - right) / denominator, -0.5, 0.5))
+                            candidate = dominant_freq + offset * resolution_hz
+                            if self.min_freq_hz <= candidate < safe_max_hz:
+                                dominant_freq = candidate
+                    # Si los intervalos de captura fluctúan demasiado, no
+                    # mostramos una cifra que parezca más fiable de lo que es.
+                    if sampling_jitter <= 0.25:
+                        bpm = dominant_freq * 60.0
+                    else:
+                        dominant_freq = None
 
         return SpectrumResult(
             freqs_hz=freqs,
@@ -146,6 +170,8 @@ class FrequencyAnalyzer:
             peak_snr=peak_snr,
             nyquist_hz=estimated_fps / 2,
             duration_seconds=duration,
+            sampling_jitter=sampling_jitter,
+            resolution_hz=resolution_hz,
         )
 
 
