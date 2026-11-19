@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import time
+import queue
+import threading
+from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -15,8 +18,9 @@ from matplotlib.figure import Figure
 
 from .analysis import FrequencyAnalyzer, roi_mean_intensity
 from .capture import VideoCaptureThread
+from .devices import discover_cameras
 from .generator import SyntheticSignalGenerator
-from .storage import append_measurements, export_measurements
+from .storage import append_measurements, export_measurements, initialize_measurements
 
 BG = "#0b1220"
 PANEL_BG = "#172338"
@@ -39,7 +43,7 @@ class VideoFrequencyApp:
         self.capture: VideoCaptureThread | None = None
         self.generator: SyntheticSignalGenerator | None = None
         self.analyzer = FrequencyAnalyzer()
-        self.history: list[tuple[float, float]] = []  # (t, freq_dominante)
+        self.history: list[tuple[float, float | None]] = []  # (t, freq_dominante)
         self._t0 = time.monotonic()
         self._tick_job = None
         self._last_plot_at = 0.0
@@ -50,9 +54,13 @@ class VideoFrequencyApp:
         self._autosave_index = 0
         self._last_autosave_at = time.monotonic()
         self._last_recorded_at = 0.0
+        self._camera_results: queue.Queue = queue.Queue(maxsize=1)
+        self._camera_scan_running = False
+        self._camera_choices: dict[str, int] = {}
 
         self._build_layout()
         self._tick()
+        self.root.after(200, self._refresh_cameras)
 
     # ------------------------------------------------------------------ UI
     def _build_layout(self) -> None:
@@ -83,9 +91,16 @@ class VideoFrequencyApp:
         ).pack(pady=10)
 
         tk.Label(control, text="Dispositivo de cámara", fg=MUTED, bg=PANEL_BG).pack(anchor="w", padx=15, pady=(8, 0))
-        self.camera_index = tk.Spinbox(control, from_=0, to=9, width=6, bg="#263449", fg=FG,
-                                        buttonbackground="#334155", relief=tk.FLAT)
-        self.camera_index.pack(anchor="w", padx=15, pady=(3, 8))
+        self.camera_selection = tk.StringVar(value="Buscando cámaras…")
+        self.camera_combo = ttk.Combobox(control, textvariable=self.camera_selection,
+                                         state="readonly", width=28)
+        self.camera_combo.pack(fill=tk.X, padx=15, pady=(3, 5))
+        self.btn_refresh_cameras = tk.Button(control, text="Buscar cámaras disponibles",
+                                              command=self._refresh_cameras, bg="#334155", fg=FG)
+        self.btn_refresh_cameras.pack(fill=tk.X, padx=15, pady=(0, 8))
+        self.camera_hint = tk.Label(control, text="Comprobando dispositivos…",
+                                    bg=PANEL_BG, fg=MUTED, wraplength=265, justify=tk.LEFT)
+        self.camera_hint.pack(anchor="w", padx=15, pady=(0, 8))
         tk.Label(control, text="Tamaño de región central (%)", fg=MUTED, bg=PANEL_BG).pack(anchor="w", padx=15)
         self.roi_slider = tk.Scale(control, from_=10, to=100, resolution=10, orient=tk.HORIZONTAL,
                                     bg=PANEL_BG, fg=FG, highlightthickness=0, troughcolor="#334155")
@@ -235,12 +250,9 @@ class VideoFrequencyApp:
             return
         self._detener_generacion()
         if self.capture is None:
-            try:
-                source = int(self.camera_index.get())
-                if source < 0 or source > 9:
-                    raise ValueError
-            except ValueError:
-                messagebox.showerror("Cámara", "Selecciona un índice de cámara entre 0 y 9.")
+            source = self._camera_choices.get(self.camera_selection.get())
+            if source is None:
+                messagebox.showinfo("Cámara", "Pulsa Buscar cámaras disponibles y selecciona una.")
                 return
             self.capture = VideoCaptureThread(source)
             if self.capture.start():
@@ -252,6 +264,41 @@ class VideoFrequencyApp:
                 self.capture = None
         else:
             self._detener_captura()
+
+    def _refresh_cameras(self) -> None:
+        if self._camera_scan_running:
+            return
+        if self.capture is not None:
+            self.camera_hint.config(text="Detén la captura antes de buscar cámaras.")
+            return
+        self._camera_scan_running = True
+        self.btn_refresh_cameras.config(state=tk.DISABLED)
+        self.camera_hint.config(text="Buscando cámaras conectadas…")
+
+        def worker() -> None:
+            try:
+                result = discover_cameras()
+                self._camera_results.put((result, None))
+            except Exception as exc:
+                self._camera_results.put(([], str(exc)))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_camera_results(self) -> None:
+        try:
+            found, error = self._camera_results.get_nowait()
+        except queue.Empty:
+            return
+        self._camera_scan_running = False
+        self.btn_refresh_cameras.config(state=tk.NORMAL)
+        previous = self._camera_choices.get(self.camera_selection.get())
+        self._camera_choices = {label: index for index, label in found}
+        choices = list(self._camera_choices)
+        self.camera_combo.config(values=choices)
+        selected = next((label for label, index in found if index == previous), None)
+        self.camera_selection.set(selected or (choices[0] if choices else "Sin cámaras disponibles"))
+        self.camera_hint.config(text=(f"{len(choices)} cámara(s) detectada(s). Selecciona una."
+                                      if choices else (error or "No se detectaron cámaras. Revisa permisos y conexión.")))
 
     def toggle_generacion(self) -> None:
         if self.generator is not None:
@@ -314,26 +361,19 @@ class VideoFrequencyApp:
         )
         if not path:
             return
-        # El autoguardado añade filas; nunca sobrescribe un archivo existente.
-        try:
-            from pathlib import Path
-            import csv
-            existing = Path(path)
-            if existing.exists() and existing.stat().st_size:
-                with existing.open("r", encoding="utf-8-sig", newline="") as stream:
-                    header = next(csv.reader(stream), ())
-                if tuple(header) != ("t_segundos", "frecuencia_dominante_hz"):
-                    messagebox.showerror("Autoguardado", "El archivo elegido no tiene el formato CSV de mediciones.")
-                    return
-        except (OSError, UnicodeError, csv.Error) as exc:
-            messagebox.showerror("Autoguardado", f"No se puede abrir el archivo: {exc}")
-            return
+        # Crear la cabecera inmediatamente confirma la ruta y permisos.
+        # El selector permite escoger carpeta y nombre en Linux/Windows/macOS.
         self._flush_autosave()
-        self.autosave_path = path
+        try:
+            initialize_measurements(path)
+        except (OSError, ValueError, UnicodeError) as exc:
+            messagebox.showerror("Autoguardado", f"No se pudo preparar el archivo:\\n{exc}")
+            return
+        self.autosave_path = str(Path(path).expanduser().resolve())
         self.autosave_enabled = True
         self.autosave_var.set(True)
         self._autosave_index = len(self.history)
-        self.autosave_label.config(text=f"Activo · {path}", fg=ACCENT)
+        self.autosave_label.config(text=f"Guardando en: {self.autosave_path}", fg=ACCENT)
 
     def _toggle_autosave(self) -> None:
         if self.autosave_var.get():
@@ -369,9 +409,6 @@ class VideoFrequencyApp:
         self.autosave_label.config(text=f"Guardado · {self.autosave_path}", fg=ACCENT)
 
     def exportar_csv(self) -> None:
-        if not self.history:
-            messagebox.showinfo("Exportar", "Todavía no hay datos que exportar.")
-            return
         path = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV", "*.csv")],
@@ -425,6 +462,7 @@ class VideoFrequencyApp:
 
         if self.autosave_enabled and time.monotonic() - self._last_autosave_at >= 2.0:
             self._flush_autosave()
+        self._apply_camera_results()
         self._tick_job = self.root.after(30, self._tick)
 
     def _render_frame(self, frame_bgr: np.ndarray) -> None:
@@ -475,13 +513,19 @@ class VideoFrequencyApp:
                 self.bpm_label.config(text="")
             now = time.monotonic()
             # Registrar una vez por segundo, no una fila por redibujado de GUI.
-            if now - self._last_recorded_at >= 1.0:
-                self.history.append((now - self._t0, result.dominant_freq_hz))
-                self._last_recorded_at = now
+
         else:
             self.freq_label.config(text="Frecuencia: sin detección fiable")
             self.quality_label.config(text="Sin pico suficientemente claro: evita interpretar ruido como una medición.", fg="#fbbf24")
             self.bpm_label.config(text="")
+
+        # Guardar también los instantes sin detección: columna de frecuencia vacía.
+        # Así siempre hay datos de sesión para exportar y el autoguardado no parece fallar.
+        now = time.monotonic()
+        if now - self._last_recorded_at >= 1.0:
+            value = None if invalid_test else result.dominant_freq_hz
+            self.history.append((now - self._t0, value))
+            self._last_recorded_at = now
 
 
 def run() -> None:
