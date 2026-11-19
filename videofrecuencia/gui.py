@@ -178,7 +178,7 @@ class VideoFrequencyApp:
         self.autosave_label = tk.Label(control, text="Desactivado · elige una ruta para activarlo",
                                       bg=PANEL_BG, fg=MUTED, wraplength=265, justify=tk.LEFT)
         self.autosave_label.pack(fill=tk.X, padx=15, pady=(1, 5))
-        tk.Button(control, text="Reiniciar medición", command=self._reset_measurement,
+        tk.Button(control, text="Reiniciar medición", command=lambda: self._reset_measurement(clear_history=True),
                   bg="#334155", fg=FG).pack(fill=tk.X, padx=15, pady=4)
 
         tk.Label(control, text="Consejo: empieza con 3 Hz y comprueba los FPS.",
@@ -311,6 +311,11 @@ class VideoFrequencyApp:
         self._camera_choices = {label: index for index, label in found}
         choices = list(self._camera_choices)
         self.camera_combo.config(values=choices)
+        # Con una sola cámara no hay nada que elegir: ocultar el desplegable.
+        if len(choices) <= 1:
+            self.camera_combo.pack_forget()
+        elif not self.camera_combo.winfo_manager():
+            self.camera_combo.pack(fill=tk.X, padx=15, pady=(3, 5), before=self.btn_refresh_cameras)
         policy = camera_start_policy(
             len(found),
             capture_active=self.capture is not None,
@@ -364,13 +369,16 @@ class VideoFrequencyApp:
         if hasattr(self, "freq_label"):
             self._reset_measurement()
 
-    def _reset_measurement(self) -> None:
-        self.analyzer.reset()
+    def _reset_measurement(self, *, clear_history: bool = False) -> None:
+        # Cambiar de fuente, FPS o ventana reinicia el análisis, NO el historial.
+        # El borrado del historial solo ocurre al pulsar Reiniciar medición.
         self._flush_autosave()
-        self.history.clear()
-        self._autosave_index = 0
+        self.analyzer.reset()
+        if clear_history:
+            self.history.clear()
+            self._autosave_index = 0
+            self._t0 = time.monotonic()
         self._last_recorded_at = 0.0
-        self._t0 = time.monotonic()
         self._last_frame_at = 0.0
         self._last_autosave_at = time.monotonic()
         self.freq_label.config(text="Frecuencia: recopilando datos…")
@@ -411,11 +419,18 @@ class VideoFrequencyApp:
         except (OSError, ValueError, UnicodeError) as exc:
             messagebox.showerror("Autoguardado", f"No se pudo preparar el archivo:\\n{exc}")
             return
-        self.autosave_path = str(Path(path).expanduser().resolve())
+        new_path = str(Path(path).expanduser().resolve())
+        same_file = new_path == self.autosave_path
+        self.autosave_path = new_path
         self.autosave_enabled = True
         self.autosave_var.set(True)
-        self._autosave_index = len(self.history)
+        # Al cambiar de archivo, guardar el historial previo. Si es el mismo,
+        # no duplicar filas que ya se escribieron.
+        if not same_file:
+            self._autosave_index = 0
+        self._last_autosave_at = time.monotonic()
         self.autosave_label.config(text=f"Guardando en: {self.autosave_path}", fg=ACCENT)
+        self._flush_autosave()
 
     def _toggle_autosave(self) -> None:
         if self.autosave_var.get():
@@ -425,7 +440,6 @@ class VideoFrequencyApp:
                     self.autosave_var.set(False)
                 return
             self.autosave_enabled = True
-            self._autosave_index = len(self.history)
             self.autosave_label.config(text=f"Activo · {self.autosave_path}", fg=ACCENT)
         else:
             self._flush_autosave()
@@ -458,9 +472,14 @@ class VideoFrequencyApp:
         )
         if not path:
             return
+        # No sobrescribir accidentalmente el CSV activo del autoguardado.
+        if self.autosave_path and Path(path).expanduser().resolve() == Path(self.autosave_path):
+            self._flush_autosave()
+            messagebox.showinfo("Exportar", f"El autoguardado ya utiliza este archivo:\n{self.autosave_path}")
+            return
         try:
             export_measurements(path, self.history)
-        except OSError as exc:
+        except (OSError, ValueError, UnicodeError) as exc:
             messagebox.showerror("Exportar", f"No se pudo guardar el CSV: {exc}")
             return
         messagebox.showinfo("Exportar", f"Guardado en:\n{path}")
