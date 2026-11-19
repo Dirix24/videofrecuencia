@@ -48,6 +48,8 @@ class VideoFrequencyApp:
         self._t0 = time.monotonic()
         self._tick_job = None
         self._last_plot_at = 0.0
+        self._plot_magnitudes = None
+        self._plot_ylim = 1.0
         self._last_frame_at = 0.0
         self._last_frequency_setting = 3.0
         self.autosave_path: str | None = None
@@ -385,7 +387,10 @@ class VideoFrequencyApp:
         self.metrics_label.config(text="FPS: --  ·  Límite: --")
         self.quality_label.config(text="Calidad: esperando muestras")
         self.bpm_label.config(text="")
+        self._plot_magnitudes = None
+        self._plot_ylim = 1.0
         self.line.set_data([], [])
+        self.ax.set_ylim(0, 1)
         self.canvas.draw_idle()
 
     def _detener_captura(self) -> None:
@@ -549,14 +554,23 @@ class VideoFrequencyApp:
         requested = self.slider_gen.get() if self.generator is not None else None
         # Cerca de Nyquist la señal sintética puede plegarse y dar una lectura falsa.
         invalid_test = requested is not None and requested >= 0.4 * result.estimated_fps
-        self.line.set_data(result.freqs_hz, result.magnitudes)
-        if len(result.freqs_hz):
-            self.ax.set_xlim(0, min(15, result.freqs_hz[-1]))
-        if result.magnitudes.size:
-            self.ax.set_ylim(0, max(result.magnitudes.max() * 1.1, 1))
-        if time.monotonic() - self._last_plot_at >= 0.15:
+        # Suavizar solo la presentación: FFT y CSV mantienen datos originales.
+        plot_now = time.monotonic()
+        if plot_now - self._last_plot_at >= 0.10:
+            raw = result.magnitudes
+            if self._plot_magnitudes is None or self._plot_magnitudes.shape != raw.shape:
+                self._plot_magnitudes = raw.copy()
+            else:
+                self._plot_magnitudes += 0.24 * (raw - self._plot_magnitudes)
+            self.line.set_data(result.freqs_hz, self._plot_magnitudes)
+            if len(result.freqs_hz):
+                self.ax.set_xlim(0, min(15, result.freqs_hz[-1]))
+            target_ylim = max(float(self._plot_magnitudes.max()) * 1.15, 1.0)
+            rate = 0.35 if target_ylim > self._plot_ylim else 0.08
+            self._plot_ylim += rate * (target_ylim - self._plot_ylim)
+            self.ax.set_ylim(0, max(self._plot_ylim, 1.0))
             self.canvas.draw_idle()
-            self._last_plot_at = time.monotonic()
+            self._last_plot_at = plot_now
 
         if result.sampling_jitter is not None and result.sampling_jitter > 0.25:
             self.freq_label.config(text="Medición no fiable: FPS irregulares")
@@ -568,7 +582,11 @@ class VideoFrequencyApp:
             self.bpm_label.config(text="")
         elif result.dominant_freq_hz is not None:
             self.freq_label.config(text=f"Frecuencia: {result.dominant_freq_hz:.2f} Hz")
-            self.quality_label.config(text=f"Señal periódica detectada · contraste espectral {result.peak_snr:.1f}×", fg=ACCENT)
+            quality = "Estable" if result.peak_snr >= 10 and result.sampling_jitter <= 0.10 else "Orientativa"
+            self.quality_label.config(
+                text=f"{quality} · contraste {result.peak_snr:.1f}× · variación FPS {result.sampling_jitter:.0%}",
+                fg=ACCENT if quality == "Estable" else "#fbbf24",
+            )
             if 0.7 <= result.dominant_freq_hz <= 3.3 and result.bpm is not None:
                 self.bpm_label.config(
                     text=f"≈ {result.bpm:.0f} lpm si es una señal de pulso "
