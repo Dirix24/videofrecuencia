@@ -36,9 +36,14 @@ class VideoCaptureThread:
         self.last_error: str | None = None
 
     def start(self) -> bool:
+        if self._thread is not None and self._thread.is_alive():
+            return True
+        self.last_error = None
+        self._queue = queue.Queue(maxsize=1)
         self._cap = cv2.VideoCapture(self.source)
         if not self._cap.isOpened():
             self.last_error = "No se pudo abrir el dispositivo de vídeo."
+            self._cap.release()
             self._cap = None
             return False
 
@@ -48,19 +53,30 @@ class VideoCaptureThread:
         return True
 
     def _loop(self) -> None:
-        while self._running.is_set() and self._cap is not None:
-            ok, frame = self._cap.read()
-            if not ok:
-                self.last_error = "Se perdió la señal de la cámara."
-                break
-            item = Frame(image_bgr=frame, timestamp=time.monotonic())
-            # Nos quedamos siempre con el frame más reciente.
-            if self._queue.full():
+        try:
+            while self._running.is_set() and self._cap is not None:
+                ok, frame = self._cap.read()
+                if not ok:
+                    if self._running.is_set():
+                        self.last_error = "Se perdió la señal de la cámara."
+                    break
+                item = Frame(image_bgr=frame, timestamp=time.monotonic())
+                # Evita la carrera entre full() y put_nowait().
                 try:
-                    self._queue.get_nowait()
-                except queue.Empty:
-                    pass
-            self._queue.put_nowait(item)
+                    self._queue.put_nowait(item)
+                except queue.Full:
+                    try:
+                        self._queue.get_nowait()
+                    except queue.Empty:
+                        pass
+                    try:
+                        self._queue.put_nowait(item)
+                    except queue.Full:
+                        pass
+        except Exception as exc:
+            self.last_error = f"Error leyendo la cámara: {exc}"
+        finally:
+            self._running.clear()
 
     def read(self) -> Frame | None:
         try:
@@ -70,12 +86,15 @@ class VideoCaptureThread:
 
     def stop(self) -> None:
         self._running.clear()
-        if self._thread is not None:
-            self._thread.join(timeout=1.0)
-            self._thread = None
         if self._cap is not None:
             self._cap.release()
-            self._cap = None
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            if self._thread.is_alive():
+                self.last_error = "La cámara no terminó de detenerse."
+                return
+            self._thread = None
+        self._cap = None
 
     @property
     def is_running(self) -> bool:

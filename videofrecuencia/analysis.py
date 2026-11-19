@@ -47,6 +47,10 @@ class FrequencyAnalyzer:
     _timestamps: deque = field(default_factory=deque, init=False)
 
     def add_sample(self, value: float, timestamp: float) -> None:
+        if not np.isfinite(value) or not np.isfinite(timestamp):
+            raise ValueError("La intensidad y el tiempo deben ser finitos")
+        if self._timestamps and timestamp <= self._timestamps[-1]:
+            raise ValueError("Los tiempos deben aumentar estrictamente")
         self._values.append(value)
         self._timestamps.append(timestamp)
         # Purga muestras fuera de la ventana temporal.
@@ -122,8 +126,14 @@ def roi_mean_intensity(frame_bgr: np.ndarray, roi_fraction: float = 0.3) -> floa
     fondo y hace que el flicker de una fuente de luz concreta, o el color de
     un dedo apoyado en la cámara, dominen la señal.
     """
+    if not 0 < roi_fraction <= 1:
+        raise ValueError("roi_fraction debe estar entre 0 y 1")
+    if frame_bgr.ndim != 3 or frame_bgr.shape[2] != 3:
+        raise ValueError("Se necesita una imagen BGR con tres canales")
     h, w = frame_bgr.shape[:2]
-    rh, rw = int(h * roi_fraction), int(w * roi_fraction)
+    if h == 0 or w == 0:
+        raise ValueError("La imagen no puede estar vacía")
+    rh, rw = max(1, int(h * roi_fraction)), max(1, int(w * roi_fraction))
     y0, x0 = (h - rh) // 2, (w - rw) // 2
     roi = frame_bgr[y0 : y0 + rh, x0 : x0 + rw]
     gray = np.dot(roi[..., :3].astype(np.float64), [0.114, 0.587, 0.299])  # BGR -> luma
