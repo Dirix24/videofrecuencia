@@ -14,8 +14,19 @@ def camera_candidates(max_devices: int = 6) -> list[int]:
     """Índices probables; en Linux evita escanear nodos inexistentes."""
     if sys.platform.startswith("linux"):
         devices = sorted(Path("/dev").glob("video[0-9]*"))
-        indices = sorted({int(p.name[5:]) for p in devices if p.name[5:].isdigit()})
-        return indices[:max_devices] if indices else list(range(min(max_devices, 3)))
+        indices = []
+        for device in devices:
+            if not device.name[5:].isdigit():
+                continue
+            # V4L2 puede exponer nodos secundarios de metadatos (index > 0).
+            sysfs_index = Path("/sys/class/video4linux") / device.name / "index"
+            try:
+                if sysfs_index.exists() and int(sysfs_index.read_text().strip()) != 0:
+                    continue
+            except (OSError, ValueError):
+                pass
+            indices.append(int(device.name[5:]))
+        return sorted(set(indices))[:max_devices] if devices else list(range(min(max_devices, 3)))
     return list(range(max_devices))
 
 
