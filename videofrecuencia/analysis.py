@@ -114,7 +114,12 @@ class FrequencyAnalyzer:
         # donde las estimaciones con cámaras de FPS variables son poco fiables.
         # No puede descartar aliasing de señales reales por encima de Nyquist.
         # Ignora la banda fuera del rango de interés (incluye la componente DC).
-        band = (freqs >= self.min_freq_hz) & (freqs <= min(self.max_freq_hz, estimated_fps * 0.4))
+        # Los extremos de rfftfreq pueden superar el límite por redondeo
+        # (por ejemplo 9.600000000000001 frente a 9.6). Aplicamos
+        # tolerancia al redondeo para no declarar una frecuencia fuera del
+        # margen nominal de muestreo.
+        safe_max_hz = min(self.max_freq_hz, estimated_fps * 0.4)
+        band = (freqs >= self.min_freq_hz) & (freqs < np.nextafter(safe_max_hz, -np.inf))
         dominant_freq = None
         bpm = None
         peak_snr = None
