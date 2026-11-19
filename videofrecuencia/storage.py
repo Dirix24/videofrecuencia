@@ -26,7 +26,7 @@ def initialize_measurements(path: str | Path) -> Path:
     return target
 
 
-def append_measurements(path: str | Path, rows: list[tuple[float, float]]) -> int:
+def append_measurements(path: str | Path, rows: list[tuple[float, float | None]]) -> int:
     """Añade medidas a un CSV; no destruye datos existentes.
 
     Comprueba la cabecera de los CSV existentes antes de escribir.
@@ -42,7 +42,7 @@ def append_measurements(path: str | Path, rows: list[tuple[float, float]]) -> in
     return len(rows)
 
 
-def export_measurements(path: str | Path, rows: list[tuple[float, float]]) -> None:
+def export_measurements(path: str | Path, rows: list[tuple[float, float | None]]) -> None:
     """Exporta una sesión completa a la ruta seleccionada."""
     with Path(path).expanduser().open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
