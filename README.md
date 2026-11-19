@@ -151,6 +151,20 @@ La interfaz usa Tkinter, Matplotlib y OpenCV con un panel de controles desplazab
 4. Mantén una señal sintética de 3 Hz unos segundos y verifica que se añaden filas al CSV. Si no hay detección fiable, la frecuencia queda vacía.
 5. Prueba **Exportar histórico a CSV** con otra carpeta y nombre. Comprueba que el archivo se crea allí.
 
+## Desinstalación completa (Linux, Windows y macOS)
+
+Desde la carpeta de VideoFrecuencia, ejecuta **un solo comando**:
+
+```bash
+python uninstall.py
+```
+
+En Linux/macOS, si tu intérprete se llama `python3`, utiliza `python3 uninstall.py`. En Windows también puedes utilizar `py uninstall.py`.
+
+El desinstalador **muestra la ruta exacta** y exige escribir `DESINSTALAR` antes de borrar. Elimina **toda la carpeta local del proyecto**, incluido el entorno virtual `.venv`, el código y los CSV guardados **dentro** de ella. **Haz copia de los CSV antes de confirmar.** Los archivos guardados fuera de esa carpeta, Python instalado en el sistema y el repositorio remoto de GitHub no se eliminan. En Windows el borrado se programa unos segundos después para permitir que termine el proceso Python y libere el ejecutable del entorno virtual.
+
+Este procedimiento sirve para instalaciones realizadas mediante clonación del repositorio. No desinstala aplicaciones instaladas por otros empaquetadores ni accesos directos creados manualmente. Si ejecutas `uninstall.py` desde una copia de trabajo, también se eliminarán los cambios locales no subidos a GitHub.
+
 ## Solución de problemas
 
 | Problema | Qué revisar |
