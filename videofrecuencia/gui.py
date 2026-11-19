@@ -419,14 +419,17 @@ class VideoFrequencyApp:
         except (OSError, ValueError, UnicodeError) as exc:
             messagebox.showerror("Autoguardado", f"No se pudo preparar el archivo:\\n{exc}")
             return
-        self.autosave_path = str(Path(path).expanduser().resolve())
+        new_path = str(Path(path).expanduser().resolve())
+        same_file = new_path == self.autosave_path
+        self.autosave_path = new_path
         self.autosave_enabled = True
         self.autosave_var.set(True)
-        self._autosave_index = len(self.history)
+        # Al cambiar de archivo, guardar el historial previo. Si es el mismo,
+        # no duplicar filas que ya se escribieron.
+        if not same_file:
+            self._autosave_index = 0
         self._last_autosave_at = time.monotonic()
         self.autosave_label.config(text=f"Guardando en: {self.autosave_path}", fg=ACCENT)
-        # Guardar también el historial que ya se había registrado antes de elegir ruta.
-        self._autosave_index = 0
         self._flush_autosave()
 
     def _toggle_autosave(self) -> None:
