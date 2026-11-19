@@ -33,9 +33,6 @@ class SpectrumResult:
     dominant_freq_hz: float | None
     estimated_fps: float | None
     bpm: float | None
-    peak_snr: float | None = None
-    nyquist_hz: float | None = None
-    duration_seconds: float | None = None
 
 
 @dataclass
@@ -46,9 +43,6 @@ class FrequencyAnalyzer:
     max_samples: int = 512
     min_freq_hz: float = 0.5
     max_freq_hz: float = 15.0
-    min_duration_seconds: float = 1.5
-    min_signal_std: float = 0.35
-    min_peak_snr: float = 5.0
     _values: deque = field(default_factory=deque, init=False)
     _timestamps: deque = field(default_factory=deque, init=False)
 
@@ -87,8 +81,6 @@ class FrequencyAnalyzer:
         if duration <= 0:
             return None
         estimated_fps = (n - 1) / duration
-        if not np.isfinite(estimated_fps) or estimated_fps <= 0:
-            return None
 
         # Re-muestreo a intervalos regulares (la cámara no entrega frames
         # a intervalos perfectamente constantes) mediante interpolación lineal.
@@ -97,11 +89,8 @@ class FrequencyAnalyzer:
 
         # Quita la tendencia y aplica ventana de Hann para reducir fugas
         # espectrales antes de la FFT.
-        # Ajustar sobre tiempo relativo evita errores de precisión con
-        # marcas monotónicas grandes y muestra si la señal es plana.
-        relative_t = regular_t - regular_t[0]
         detrended = regular_values - np.polyval(
-            np.polyfit(relative_t, regular_values, 1), relative_t
+            np.polyfit(regular_t, regular_values, 1), regular_t
         )
         window = np.hanning(n)
         windowed = detrended * window
@@ -114,20 +103,12 @@ class FrequencyAnalyzer:
         band = (freqs >= self.min_freq_hz) & (freqs <= min(self.max_freq_hz, estimated_fps / 2))
         dominant_freq = None
         bpm = None
-        peak_snr = None
         if np.any(band):
             band_freqs = freqs[band]
             band_mag = magnitudes[band]
-            if band_mag.size:
-                peak = float(band_mag.max())
-                # Comparamos el pico con el nivel de fondo robusto.
-                noise_floor = float(np.median(band_mag))
-                peak_snr = peak / max(noise_floor, 1e-9)
-                if (duration >= self.min_duration_seconds
-                        and float(np.std(detrended)) >= self.min_signal_std
-                        and peak_snr >= self.min_peak_snr):
-                    dominant_freq = float(band_freqs[np.argmax(band_mag)])
-                    bpm = dominant_freq * 60.0
+            if band_mag.size and band_mag.max() > 0:
+                dominant_freq = float(band_freqs[np.argmax(band_mag)])
+                bpm = dominant_freq * 60.0
 
         return SpectrumResult(
             freqs_hz=freqs,
@@ -135,9 +116,6 @@ class FrequencyAnalyzer:
             dominant_freq_hz=dominant_freq,
             estimated_fps=estimated_fps,
             bpm=bpm,
-            peak_snr=peak_snr,
-            nyquist_hz=estimated_fps / 2,
-            duration_seconds=duration,
         )
 
 

@@ -1,114 +1,97 @@
-# VideoFrecuencia
+# VideoFrecuencia 📡📺
 
-**Laboratorio de análisis de frecuencia visual con webcam y FFT.**
+Aplicación de escritorio que analiza, **de verdad**, la frecuencia temporal
+de una señal de vídeo mediante FFT (transformada rápida de Fourier) sobre
+el brillo medio de una región de la imagen a lo largo del tiempo.
 
-VideoFrecuencia es una aplicación de escritorio en Python que mide **variaciones periódicas del brillo** de una zona de la imagen. Presenta el vídeo, un espectro de frecuencias y una estimación de la frecuencia dominante cuando hay una señal suficientemente clara. También incorpora un generador sintético para comprobar el algoritmo sin cámara.
 
-> **Importante:** no mide radiofrecuencias ni el refresco de una pantalla de forma directa. No es un dispositivo médico ni un instrumento calibrado. Un valor mostrado es una estimación condicionada por el muestreo y la iluminación.
+## ¿Qué hace?
 
-## Qué puedes hacer
+- **Captura en vivo** desde la webcam en un hilo aparte (no bloquea la GUI).
+- Calcula la intensidad media (luma) de una región central del frame en
+  cada instante y mantiene una ventana deslizante de esos valores.
+- Aplica **FFT** sobre esa serie temporal para encontrar la frecuencia
+  dominante de oscilación del brillo, y la muestra en un espectro en vivo.
+- **Casos de uso reales**:
+  - Detectar **parpadeo (flicker)** de luces LED/fluorescentes o de
+    pantallas con PWM (habitualmente en el rango de 50–1000+ Hz, aunque
+    con una webcam normal solo se puede muestrear de forma fiable hasta
+    la mitad de sus fps).
+  - **Estimación aproximada de pulso** (fotopletismografía remota, rPPG):
+    apoyando un dedo sobre la cámara con el flash/luz encendida, los
+    cambios de color por el bombeo de sangre generan una oscilación en el
+    rango 0.7–3.3 Hz (42–200 lpm). **No es un dispositivo médico.**
+- **Generador de señal de prueba**: crea un vídeo sintético que parpadea a
+  una frecuencia elegida por el usuario (0.5–15 Hz), útil para calibrar y
+  verificar que el analizador detecta correctamente una frecuencia conocida
+  sin depender de hardware externo.
+- **Exportación a CSV** del histórico de frecuencia dominante detectada.
 
-| Función | Descripción |
-| --- | --- |
-| Cámara en directo | Captura vídeo con OpenCV sin bloquear la ventana |
-| Región de interés (ROI) | Analiza el brillo medio del cuadrado central |
-| FFT | Calcula el espectro de la señal de luminosidad en una ventana temporal |
-| Detección de señal | Evita mostrar frecuencias cuando la imagen es prácticamente plana, la ventana es demasiado corta o no destaca un pico claro |
-| Diagnóstico | Indica FPS estimados, límite de Nyquist y contraste del pico |
-| Señal sintética | Genera un parpadeo configurable para verificar el analizador |
-| CSV | Exporta el histórico de frecuencias detectadas |
-
-## Inicio rápido
-
-Necesitas **Python 3.10 o superior**, una instalación de Tkinter y, para la captura real, una webcam reconocida por OpenCV.
-
-En Debian/Ubuntu/MX Linux, si falta Tkinter:
+## Instalación
 
 ```bash
-sudo apt update
-sudo apt install python3-tk python3-venv
+python -m venv .venv
+source .venv/bin/activate  # En Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-Instalación desde GitHub:
+Requiere una cámara accesible por OpenCV (`cv2.VideoCapture(0)`).
+
+## Uso
 
 ```bash
-git clone https://github.com/Dirix24/videofrecuencia.git
-cd videofrecuencia
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
 python app.py
 ```
 
-En Windows, activa el entorno con `.venv\Scripts\activate` y ejecuta `python app.py`.
+1. Pulsa **"Iniciar captura (cámara)"** para analizar la señal de la webcam
+   en vivo, o **"Generar señal de prueba"** para ver el analizador trabajar
+   sobre una señal sintética con frecuencia conocida (ajustable con el
+   deslizador).
+2. El recuadro verde sobre el vídeo marca la región de interés (ROI) que se
+   está midiendo.
+3. El panel inferior muestra el espectro de frecuencias en tiempo real y la
+   frecuencia dominante detectada.
+4. Usa **"Exportar histórico a CSV"** para guardar la serie de frecuencias
+   detectadas y analizarla después (por ejemplo, en una hoja de cálculo).
 
-## Cómo utilizarlo
+## Estructura del proyecto
 
-### 1. Comprueba el algoritmo sin webcam
-
-1. Abre la aplicación y ajusta **Frecuencia señal de prueba** a 3,0 Hz.
-2. Pulsa **Generar señal de prueba**.
-3. Espera unos segundos hasta que se acumule una ventana suficiente.
-4. Comprueba que el espectro muestra un pico cerca de 3 Hz y que la frecuencia indicada se aproxima a la configurada.
-5. Detén la señal antes de cambiar de modo.
-
-La señal sintética se genera desde el reloj del ordenador y la frecuencia real observada puede variar si la interfaz no puede dibujar frames con suficiente rapidez. Por encima de la mitad de los FPS reales pueden aparecer frecuencias falsas por *aliasing*.
-
-### 2. Analiza una fuente real
-
-1. Pulsa **Iniciar captura (cámara)** y autoriza el acceso si tu sistema lo solicita.
-2. Apunta a una zona con iluminación estable y procura mantener la cámara quieta.
-3. Coloca la fuente que quieres estudiar dentro del **cuadrado central**.
-4. Espera a que se recopilen muestras y observa el gráfico, los FPS y el estado de calidad.
-5. Si aparece **«sin detección fiable»**, no interpretes el pico más alto como una frecuencia confirmada.
-
-La luz ambiente, los movimientos, la exposición automática, el balance de blancos y los FPS variables pueden alterar las mediciones.
-
-### 3. Exporta resultados
-
-Usa **Exportar histórico a CSV**. El archivo contiene `t_segundos` y `frecuencia_dominante_hz` para las mediciones con pico detectado. Al iniciar una nueva captura o señal de prueba se limpia el histórico para no mezclar sesiones.
-
-## Cómo interpretar las medidas
-
-- **Hz:** ciclos de cambio de brillo por segundo; por ejemplo, 3 Hz son tres oscilaciones por segundo.
-- **FPS:** número estimado de muestras de vídeo por segundo, calculado a partir de los timestamps.
-- **Límite (Nyquist):** aproximadamente FPS / 2; una webcam de 30 FPS no puede medir de forma fiable un parpadeo de 50/60 Hz con este método.
-- **Contraste espectral:** relación entre el pico y el fondo del espectro; no es un porcentaje de precisión ni una garantía de detección correcta.
-- **Sin detección fiable:** falta duración, variación luminosa suficiente o un pico claramente destacado. Es preferible a mostrar una cifra engañosa.
-
-La FFT se calcula sobre el brillo medio de la ROI, interpolando las muestras a intervalos uniformes y aplicando eliminación de tendencia y ventana de Hann. Este método es didáctico y no compensa todos los artefactos de la cámara.
-
-## Pruebas automáticas
-
-```bash
-python -m pip install -r requirements-dev.txt
-python -m pytest -v
-python -m compileall -q videofrecuencia
+```
+videofrecuencia/
+├── app.py                      # Punto de entrada
+├── videofrecuencia/
+│   ├── capture.py               # Captura de cámara en hilo aparte
+│   ├── analysis.py              # Analizador FFT (ventana, FFT, pico dominante)
+│   ├── generator.py             # Generador de señal sintética de prueba
+│   └── gui.py                   # Interfaz Tkinter + gráfico matplotlib
+├── tests/
+│   └── test_analysis.py         # Tests del analizador (sin necesitar cámara)
+├── requirements.txt
+└── requirements-dev.txt
 ```
 
-Las pruebas verifican detección de señales sintéticas, ausencia de detección en imágenes planas o con ruido débil, validación de datos y situaciones simuladas de desconexión de cámara. **No sustituyen la comprobación con una webcam real y tu sistema operativo.**
+## Tests
 
-## Solución de problemas
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
 
-| Problema | Qué revisar |
-| --- | --- |
-| La cámara no abre | Cierra otras aplicaciones que la usen y comprueba los permisos del sistema |
-| No aparece frecuencia | Espera unos segundos, mejora la iluminación y reduce los movimientos |
-| Resultado inesperado | Comprueba FPS y Nyquist; evita frecuencias de prueba cercanas al límite |
-| No abre la ventana | Comprueba que Tkinter está instalado y que tienes una sesión gráfica |
-| No se guarda el CSV | Elige una carpeta con permisos de escritura |
+Los tests verifican el módulo de análisis con señales sintéticas (no
+requieren cámara ni entorno gráfico), incluyendo que una senoidal de
+frecuencia conocida se detecta correctamente.
 
-## Arquitectura
+## Limitaciones honestas
 
-- `app.py`: entrada de la aplicación.
-- `videofrecuencia/gui.py`: interfaz Tkinter y gráfico Matplotlib.
-- `videofrecuencia/capture.py`: adquisición de vídeo en hilo independiente.
-- `videofrecuencia/analysis.py`: ROI, serie temporal, FFT y validación de picos.
-- `videofrecuencia/generator.py`: señal de prueba.
-- `tests/`: pruebas de regresión.
+- La frecuencia máxima detectable está limitada por los fps reales de la
+  cámara (Nyquist = fps/2), normalmente 15 Hz como máximo en una webcam
+  típica de 30 fps.
+- No es un analizador de espectro de radiofrecuencia: no puede medir
+  señales de radio en MHz/GHz, solo variaciones de brillo capturables por
+  una cámara de vídeo.
+- La estimación de pulso es solo demostrativa y sensible al ruido, al
+  movimiento y a la iluminación.
 
-## Estado del proyecto y límites
+## Licencia
 
-Proyecto experimental de análisis óptico, no un medidor de laboratorio. Los resultados de la webcam dependen del hardware, los controladores y las condiciones de captura. **No utilizar para diagnóstico médico, decisiones de seguridad ni mediciones certificadas.**
-
-Autor: [Dirix24](https://github.com/Dirix24). No se declara una licencia hasta que el propietario añada un archivo `LICENSE`.
+MIT (o la que prefieras añadir).
